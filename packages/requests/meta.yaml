@@ -3,7 +3,7 @@ package:
   version: 2021.11.2
 
 source:
-  url: https://github.com/bartbroere/pyodide-requests/archive/refs/heads/main.zip
+  url: https://github.com/bartbroere/pyodide-requests/archive/refs/heads/main.tar.gz
   sha256: f34e4c9e564a2e04122c547bcd5537b40b8789f5270015eb661d55cb4d41d462
 
 test:
