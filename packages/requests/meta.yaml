@@ -4,7 +4,7 @@ package:
 
 source:
   url: https://github.com/bartbroere/pyodide-requests/archive/refs/heads/main.tar.gz
-  sha256: 0c357d829c9b9c55b0be64c923fc5ed67e30a61100658abe5a54245c71f70358
+  sha256: 8bfbebf0a225dc7058eeaaf066ae44e9a5f29c893f12bce1f3690dfec9360cb8
 
 test:
   imports:
