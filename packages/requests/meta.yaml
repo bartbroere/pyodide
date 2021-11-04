@@ -1,10 +1,10 @@
 package:
   name: requests
-  version: 2021.11.2
+  version: 2021.11.3
 
 source:
   url: https://github.com/bartbroere/pyodide-requests/archive/refs/heads/main.tar.gz
-  sha256: fd340743bec1ebfffffd6a12d51db740371bd380c6fff666bfd1922dfecac0af
+  sha256: 0c357d829c9b9c55b0be64c923fc5ed67e30a61100658abe5a54245c71f70358
 
 test:
   imports:
