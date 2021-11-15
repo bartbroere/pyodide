@@ -1,0 +1,8 @@
+package:
+  name: ijson
+  version: 3.1.4
+source:
+  sha256: 1d1003ae3c6115ec9b587d29dd136860a81a23c7626b682e2b5b12c9fd30e4ea
+  url: https://files.pythonhosted.org/packages/a8/da/f4b5fda308b60c6c31aa4203f20133a3b5b472e41c0907bc14b7c555cde2/ijson-3.1.4.tar.gz
+  patches:
+    - patches/ijson.patch
