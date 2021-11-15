@@ -1,0 +1,22 @@
+package:
+  name: hansken
+  version: 2021.11.10
+
+source:
+  # TODO temporary hack untill we can get a source tarball from PyPI
+  # TODO Make sure this file is available at runtime using python -m http.server
+  url: http://localhost:8000/hansken-0.0+dev.tar.gz
+  sha256: 41d395503d5cfc40259ca258005fb6eb7c268db49292b4fbc5aea5f9147a7852
+
+requirements:
+ run:
+   - requests
+   - logbook
+   - setuptools
+   - iso8601
+   - ijson
+   - decorator
+
+test:
+  imports:
+    - hansken
