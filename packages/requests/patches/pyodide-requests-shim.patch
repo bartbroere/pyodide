@@ -235,7 +235,7 @@ index e7d292d580..b9530887b4 100644
      @property
      def links(self):
 diff --git a/requests/sessions.py b/requests/sessions.py
-index ae4bcc8e79..6107f8d658 100644
+index ae4bcc8e79..19e240a038 100644
 --- a/requests/sessions.py
 +++ b/requests/sessions.py
 @@ -7,35 +7,35 @@
@@ -280,7 +280,7 @@ index ae4bcc8e79..6107f8d658 100644
  )
 -
 -from .status_codes import codes
-+from .utils import to_key_val_list, DEFAULT_PORTS, set_headers
++from .utils import to_key_val_list, DEFAULT_PORTS
  
  # formerly defined here, reexposed here for backward compatibility
 -from .models import REDIRECT_STATI
