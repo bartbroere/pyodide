@@ -235,7 +235,7 @@ index e7d292d580..b9530887b4 100644
      @property
      def links(self):
 diff --git a/requests/sessions.py b/requests/sessions.py
-index ae4bcc8e79..838609c559 100644
+index ae4bcc8e79..d34c51af39 100644
 --- a/requests/sessions.py
 +++ b/requests/sessions.py
 @@ -7,35 +7,35 @@
@@ -443,7 +443,7 @@ index ae4bcc8e79..838609c559 100644
  
      def request(self, method, url,
              params=None, data=None, headers=None, cookies=None, files=None,
-@@ -512,36 +422,40 @@ def request(self, method, url,
+@@ -512,36 +422,38 @@ def request(self, method, url,
              If Tuple, ('cert', 'key') pair.
          :rtype: requests.Response
          """
@@ -492,22 +492,20 @@ index ae4bcc8e79..838609c559 100644
 +                data = Blob.new([json_module.dumps(data)], {
 +                    'type': 'application/json',
 +                })
-+                request.setRequestHeader('Content-Type', 'application/json')
-+                request.send(data)
 +            else:
-+                warnings.warn('This type of input to the json parameter of Pyodide requests is not supported')
++                warnings.warn('This type of input to the data parameter of Pyodide requests is not (yet) supported')
 +        if json:
 +            if isinstance(json, Mapping):
 +                data = Blob.new([json_module.dumps(json)], {
 +                    'type': 'application/json',
 +                })
-+                request.setRequestHeader('Content-Type', 'application/json')
-+                request.send(data)
 +            else:
-+                warnings.warn('This type of input to the json parameter of Pyodide requests is not supported')
++                warnings.warn('This type of input to the json parameter of Pyodide requests is not (yet) supported')
 +        if verify is not None or cert or not allow_redirects or proxies or auth or hooks or files or cookies:
 +            warnings.warn('The Pyodide version of requests does not support the following parameters (yet): '
 +                          'verify, cert, allow_redirects, proxies, auth, hooks, files and cookies')
++        if data:
++            request.send(data)
 +        else:
 +            request.send()
 +        return Response(request)
