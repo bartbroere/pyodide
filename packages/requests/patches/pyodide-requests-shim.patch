@@ -235,7 +235,7 @@ index e7d292d580..b9530887b4 100644
      @property
      def links(self):
 diff --git a/requests/sessions.py b/requests/sessions.py
-index ae4bcc8e79..392f77ca6c 100644
+index ae4bcc8e79..838609c559 100644
 --- a/requests/sessions.py
 +++ b/requests/sessions.py
 @@ -7,35 +7,35 @@
@@ -443,7 +443,7 @@ index ae4bcc8e79..392f77ca6c 100644
  
      def request(self, method, url,
              params=None, data=None, headers=None, cookies=None, files=None,
-@@ -512,36 +422,38 @@ def request(self, method, url,
+@@ -512,36 +422,40 @@ def request(self, method, url,
              If Tuple, ('cert', 'key') pair.
          :rtype: requests.Response
          """
@@ -478,6 +478,8 @@ index ae4bcc8e79..392f77ca6c 100644
 -
 -        return resp
 +        request = XMLHttpRequest.new()
++        # Send cookies that might be set in the browser already
++        request.withCredentials = True
 +        request.open(method.upper(), url, False)
 +        if params:
 +            if isinstance(params, Mapping):
