@@ -10,7 +10,7 @@ Pyodide packages, including the `pyodide.js` file, are available from the JsDeli
 
 | channel             | indexURL                                         | Comments                                                                                 | REPL                                               |
 | ------------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------- | -------------------------------------------------- |
-| Latest release      | `https://cdn.jsdelivr.net/pyodide/v0.18.1/full/` | Recommended, cached by the browser                                                       | [link](https://pyodide.org/en/stable/console.html) |
+| Latest release      | `https://cdn.jsdelivr.net/pyodide/v0.19.0/full/` | Recommended, cached by the browser                                                       | [link](https://pyodide.org/en/stable/console.html) |
 | Dev (`main` branch) | `https://cdn.jsdelivr.net/pyodide/dev/full/`     | Re-deployed for each commit on main, no browser caching, should only be used for testing | [link](https://pyodide.org/en/latest/console.html) |
 
 To access a particular file, append the file name to `indexURL`. For instance,
@@ -20,14 +20,14 @@ To access a particular file, append the file name to `indexURL`. For instance,
 The previous CDN `pyodide-cdn2.iodide.io` is deprecated and should not be used.
 ```
 
-### Github releases
+### GitHub releases
 
-You can also download Pyodide packages from [Github
+You can also download Pyodide packages from [GitHub
 releases](https://github.com/pyodide/pyodide/releases)
 (`pyodide-build-*.tar.bz2` file) serve them yourself, as explained in the
 following section.
 
-=(serving_pyodide_packages)
+(serving_pyodide_packages)=
 
 ## Serving Pyodide packages
 
@@ -51,7 +51,7 @@ your browser console to see the output from Python via Pyodide!
 ### Remote deployments
 
 Any solution that is able to host static files and correctly sets WASM
-MIME type, and CORS headers would work. For instance, you can use Github Pages
+MIME type, and CORS headers would work. For instance, you can use GitHub Pages
 or similar services.
 
 For additional suggestions for optimizing size and load times, see the [Emscripten

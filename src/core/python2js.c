@@ -138,7 +138,7 @@ _python2js_sequence(ConversionContext context, PyObject* x)
     FAIL_IF_NULL(pyitem);
     jsitem = _python2js(context, pyitem);
     FAIL_IF_NULL(jsitem);
-    JsArray_Push(jsarray, jsitem);
+    JsArray_Push_unchecked(jsarray, jsitem);
     Py_CLEAR(pyitem);
     hiwire_CLEAR(jsitem);
   }
@@ -265,7 +265,7 @@ finally:
 
 /**
  * Convert x if x is an immutable python type for which there exists an
- * equivalent immutable Javascript type. Otherwise return Js_novalue.
+ * equivalent immutable JavaScript type. Otherwise return Js_novalue.
  *
  * Return type would be Option<JsRef>
  */
@@ -289,7 +289,7 @@ _python2js_immutable(PyObject* x)
 }
 
 /**
- * If x is a wrapper around a Javascript object, unwrap the Javascript object
+ * If x is a wrapper around a JavaScript object, unwrap the JavaScript object
  * and return it. Otherwise, return Js_novalue.
  *
  * Return type would be Option<JsRef>
@@ -328,7 +328,7 @@ _python2js_deep(ConversionContext context, PyObject* x)
   }
   if (context.proxies) {
     JsRef proxy = pyproxy_new(x);
-    JsArray_Push(context.proxies, proxy);
+    JsArray_Push_unchecked(context.proxies, proxy);
     return proxy;
   }
   PyErr_SetString(conversion_error, "No conversion known for x.");
@@ -337,7 +337,7 @@ finally:
 }
 
 /* During conversion of collection types (lists and dicts) from Python to
- * Javascript, we need to make sure that those collections don't include
+ * JavaScript, we need to make sure that those collections don't include
  * themselves, otherwise infinite recursion occurs. We also want to make sure
  * that if the list contains multiple copies of the same list that they point to
  * the same place. For after:
@@ -348,9 +348,9 @@ finally:
  * We want to ensure that b.toJs()[0] is the same list as b.toJs()[1].
  *
  * The solution is to maintain a cache mapping from the PyObject* to the
- * Javascript object id for all collection objects. (One could do this for
+ * JavaScript object id for all collection objects. (One could do this for
  * scalars as well, but that would imply a larger cache, and identical scalars
- * are probably interned for deduplication on the Javascript side anyway).
+ * are probably interned for deduplication on the JavaScript side anyway).
  *
  * This cache only lives for each invocation of python2js.
  */
@@ -407,7 +407,7 @@ finally:
 
 /**
  * Do a shallow conversion from python2js. Convert immutable types with
- * equivalent Javascript immutable types, but all other types are proxied.
+ * equivalent JavaScript immutable types, but all other types are proxied.
  *
  */
 JsRef
@@ -422,7 +422,7 @@ python2js_inner(PyObject* x, JsRef proxies, bool track_proxies)
   JsRef proxy = pyproxy_new(x);
   FAIL_IF_NULL(proxy);
   if (track_proxies) {
-    JsArray_Push(proxies, proxy);
+    JsArray_Push_unchecked(proxies, proxy);
   }
   return proxy;
 finally:
@@ -432,6 +432,7 @@ finally:
                              "Conversion from python to javascript failed");
     }
   } else {
+    fail_test();
     PyErr_SetString(internal_error, "Internal error occurred in python2js");
   }
   return NULL;
@@ -439,7 +440,7 @@ finally:
 
 /**
  * Do a shallow conversion from python2js. Convert immutable types with
- * equivalent Javascript immutable types.
+ * equivalent JavaScript immutable types.
  *
  * Other types are proxied and added to the list proxies (to allow easy memory
  * management later). If proxies is NULL, python2js will raise an error instead
@@ -452,8 +453,8 @@ python2js_track_proxies(PyObject* x, JsRef proxies)
 }
 
 /**
- * Do a translation from Python to Javascript. Convert immutable types with
- * equivalent Javascript immutable types, but all other types are proxied.
+ * Do a translation from Python to JavaScript. Convert immutable types with
+ * equivalent JavaScript immutable types, but all other types are proxied.
  */
 JsRef
 python2js(PyObject* x)
@@ -475,7 +476,7 @@ _JsMap_Set(ConversionContext context, JsRef map, JsRef key, JsRef value)
 }
 
 /**
- * Do a conversion from Python to Javascript using settings from
+ * Do a conversion from Python to JavaScript using settings from
  * ConversionContext
  */
 JsRef
@@ -504,6 +505,7 @@ python2js_with_context(ConversionContext context, PyObject* x)
                                "Conversion from python to javascript failed");
       }
     } else {
+      fail_test();
       PyErr_SetString(internal_error,
                       "Internal error occurred in python2js_with_depth");
     }
@@ -512,7 +514,7 @@ python2js_with_context(ConversionContext context, PyObject* x)
 }
 
 /**
- * Do a conversion from Python to Javascript, converting lists, dicts, and sets
+ * Do a conversion from Python to JavaScript, converting lists, dicts, and sets
  * down to depth "depth".
  */
 JsRef
@@ -563,8 +565,8 @@ _JsArray_PostProcess(ConversionContext context, JsRef array)
 }
 
 /**
- * dict_converter should be a Javascript function that converts an Iterable of
- * pairs into the desired Javascript object. If dict_converter is NULL, we use
+ * dict_converter should be a JavaScript function that converts an Iterable of
+ * pairs into the desired JavaScript object. If dict_converter is NULL, we use
  * python2js_with_depth which converts dicts to Map (the default)
  */
 JsRef
@@ -689,8 +691,9 @@ EM_JS_NUM(errcode, destroy_proxies_js, (JsRef proxies_id), {
   }
 })
 
+// We need to avoid a name clash with destroy_proxies defined in jsproxy.c
 static PyObject*
-destroy_proxies(PyObject* self, PyObject* arg)
+destroy_proxies_(PyObject* self, PyObject* arg)
 {
   if (!JsProxy_Check(arg)) {
     PyErr_SetString(PyExc_TypeError, "Expected a JsProxy for the argument");
@@ -725,7 +728,7 @@ static PyMethodDef methods[] = {
   },
   {
     "destroy_proxies",
-    (PyCFunction)destroy_proxies,
+    (PyCFunction)destroy_proxies_,
     METH_O,
   },
   { NULL } /* Sentinel */

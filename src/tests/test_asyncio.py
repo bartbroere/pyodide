@@ -1,8 +1,3 @@
-import sys
-from pathlib import Path
-
-sys.path.append(str(Path(__file__).resolve().parents[2] / "src" / "py"))
-
 import pytest  # type: ignore
 import time
 from pyodide import eval_code_async
@@ -415,22 +410,6 @@ def test_await_pyproxy_eval_async(selenium):
         let result = await c;
         c.destroy();
         return (!!result) && ("packages" in result);
-        """
-    )
-
-    assert selenium.run_js(
-        """
-        let c = pyodide.pyodide_py.eval_code_async("1+1");
-        await c;
-        c.destroy();
-        let err_occurred = false;
-        try {
-            // Triggers: cannot await already awaited coroutine
-            await c;
-        } catch(e){
-            err_occurred = true;
-        }
-        return err_occurred;
         """
     )
 

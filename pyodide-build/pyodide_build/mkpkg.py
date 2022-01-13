@@ -13,7 +13,7 @@ import warnings
 
 from .io import parse_package_config
 
-PACKAGES_ROOT = Path(__file__).parent.parent / "packages"
+PACKAGES_ROOT = Path(__file__).parents[2] / "packages"
 
 
 class MkpkgFailedException(Exception):
@@ -30,7 +30,9 @@ def _extract_sdist(pypi_metadata: Dict[str, Any]) -> Dict:
 
     # The first one we can use. Usually a .tar.gz
     for entry in pypi_metadata["urls"]:
-        if entry["filename"].endswith(sdist_extensions):
+        if entry["packagetype"] == "sdist" and entry["filename"].endswith(
+            sdist_extensions
+        ):
             return entry
 
     raise MkpkgFailedException(
@@ -43,7 +45,7 @@ def _extract_sdist(pypi_metadata: Dict[str, Any]) -> Dict:
 
 
 def _get_metadata(package: str, version: Optional[str] = None) -> Dict:
-    """Download metadata for a package from PyPi"""
+    """Download metadata for a package from PyPI"""
     version = ("/" + version) if version is not None else ""
     url = f"https://pypi.org/pypi/{package}{version}/json"
 
@@ -52,10 +54,23 @@ def _get_metadata(package: str, version: Optional[str] = None) -> Dict:
             pypi_metadata = json.load(fd)
     except urllib.error.HTTPError as e:
         raise MkpkgFailedException(
-            f"Failed to load metadata for {package}{version} from https://pypi.org/pypi/{package}{version}/json: {e}"
+            f"Failed to load metadata for {package}{version} from "
+            f"https://pypi.org/pypi/{package}{version}/json: {e}"
         )
 
     return pypi_metadata
+
+
+def _import_ruamel_yaml():
+    """Import ruamel.yaml with a better error message is not installed."""
+    try:
+        from ruamel.yaml import YAML
+    except ImportError as err:
+        raise ImportError(
+            "No module named 'ruamel'. "
+            "It can be installed with pip install ruamel.yaml"
+        ) from err
+    return YAML
 
 
 def make_package(package: str, version: Optional[str] = None):
@@ -63,7 +78,8 @@ def make_package(package: str, version: Optional[str] = None):
     Creates a template that will work for most pure Python packages,
     but will have to be edited for more complex things.
     """
-    from ruamel.yaml import YAML
+    print(f"Creating meta.yaml package for {package}")
+    YAML = _import_ruamel_yaml()
 
     yaml = YAML()
 
@@ -85,7 +101,7 @@ def make_package(package: str, version: Optional[str] = None):
         "test": {"imports": [package]},
         "about": {
             "home": homepage,
-            "PyPi": pypi,
+            "PyPI": pypi,
             "summary": summary,
             "license": license,
         },
@@ -93,8 +109,10 @@ def make_package(package: str, version: Optional[str] = None):
 
     if not (PACKAGES_ROOT / package).is_dir():
         os.makedirs(PACKAGES_ROOT / package)
-    with open(PACKAGES_ROOT / package / "meta.yaml", "w") as fd:
+    out_path = PACKAGES_ROOT / package / "meta.yaml"
+    with open(out_path, "w") as fd:
         yaml.dump(yaml_content, fd)
+    success(f"Output written to {out_path}")
 
 
 class bcolors:
@@ -123,12 +141,16 @@ def success(msg):
 
 
 def update_package(package: str, update_patched: bool = True):
-    from ruamel.yaml import YAML
+
+    YAML = _import_ruamel_yaml()
 
     yaml = YAML()
 
     meta_path = PACKAGES_ROOT / package / "meta.yaml"
-    yaml_content = parse_package_config(meta_path)
+    try:
+        yaml_content = parse_package_config(meta_path)
+    except:
+        sys.exit(0)
 
     if "url" not in yaml_content["source"]:
         print(f"Skipping: {package} is a local package!")
@@ -143,7 +165,7 @@ def update_package(package: str, update_patched: bool = True):
     pypi_ver = pypi_metadata["info"]["version"]
     local_ver = yaml_content["package"]["version"]
     if pypi_ver <= local_ver:
-        print(f"{package} already up to date. Local: {local_ver} PyPi: {pypi_ver}")
+        print(f"{package} already up to date. Local: {local_ver} PyPI: {pypi_ver}")
         sys.exit(0)
 
     print(f"{package} is out of date: {local_ver} <= {pypi_ver}.")

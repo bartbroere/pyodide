@@ -1,13 +1,10 @@
 import asyncio
 import pytest
-from pathlib import Path
 import sys
 import time
 
 from pyodide_build.testing import run_in_pyodide
 from conftest import selenium_common
-
-sys.path.append(str(Path(__file__).resolve().parents[2] / "src" / "py"))
 
 from pyodide import CodeRunner  # noqa: E402
 from _pyodide.console import (
@@ -407,6 +404,35 @@ def test_console_html(console_html_fixture):
             [[;;;terminal-error]Traceback (most recent call last):
               File \"<console>\", line 1, in <module>
             Exception: hi]
+            """
+        ).strip()
+    )
+
+    assert (
+        exec_and_get_result(
+            dedent(
+                """
+            class Test:
+                def __repr__(self):
+                    raise TypeError("hi")
+
+            Test()
+            """
+            ).strip()
+        )
+        == dedent(
+            """
+            >>> class Test:
+            ...     def __repr__(self):
+            ...         raise TypeError(\"hi\")
+            ... \
+
+            >>> Test()
+            [[;;;terminal-error]Traceback (most recent call last):
+              File \"/lib/python3.9/site-packages/_pyodide/console.py\", line 486, in repr_shorten
+                text = repr(value)
+              File \"<console>\", line 3, in __repr__
+            TypeError: hi]
             """
         ).strip()
     )

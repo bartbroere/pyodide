@@ -10,15 +10,11 @@ PACKAGES_DIR = (Path(__file__).parents[3] / "packages").resolve()
 
 
 def test_generate_dependency_graph():
-    pkg_map = buildall.generate_dependency_graph(PACKAGES_DIR, "beautifulsoup4")
+    pkg_map = buildall.generate_dependency_graph(PACKAGES_DIR, {"beautifulsoup4"})
 
     assert set(pkg_map.keys()) == {
-        "packaging",
-        "pyparsing",
-        "distutils",
         "soupsieve",
         "beautifulsoup4",
-        "micropip",
     }
     assert pkg_map["soupsieve"].dependencies == []
     assert pkg_map["soupsieve"].dependents == {"beautifulsoup4"}
@@ -27,7 +23,9 @@ def test_generate_dependency_graph():
 
 
 def test_generate_packages_json():
-    pkg_map = buildall.generate_dependency_graph(PACKAGES_DIR, "beautifulsoup4")
+    pkg_map = buildall.generate_dependency_graph(
+        PACKAGES_DIR, {"beautifulsoup4", "micropip"}
+    )
 
     package_data = buildall.generate_packages_json(pkg_map)
     assert set(package_data.keys()) == {"info", "packages"}
@@ -59,10 +57,12 @@ def test_build_dependencies(n_jobs, monkeypatch):
 
     monkeypatch.setattr(buildall, "Package", MockPackage)
 
-    pkg_map = buildall.generate_dependency_graph(PACKAGES_DIR, "lxml")
+    pkg_map = buildall.generate_dependency_graph(PACKAGES_DIR, {"lxml", "micropip"})
 
-    Args = namedtuple("args", ["n_jobs"])
-    buildall.build_from_graph(pkg_map, Path("."), Args(n_jobs=n_jobs))
+    Args = namedtuple("args", ["n_jobs", "force_rebuild"])
+    buildall.build_from_graph(
+        pkg_map, Path("."), Args(n_jobs=n_jobs, force_rebuild=True)
+    )
 
     assert set(build_list) == {
         "packaging",
@@ -100,10 +100,12 @@ def test_build_all_dependencies(n_jobs, monkeypatch):
 
     monkeypatch.setattr(buildall, "Package", MockPackage)
 
-    pkg_map = buildall.generate_dependency_graph(PACKAGES_DIR, package_list=None)
+    pkg_map = buildall.generate_dependency_graph(PACKAGES_DIR, packages={"*"})
 
-    Args = namedtuple("args", ["n_jobs"])
-    buildall.build_from_graph(pkg_map, Path("."), Args(n_jobs=n_jobs))
+    Args = namedtuple("args", ["n_jobs", "force_rebuild"])
+    buildall.build_from_graph(
+        pkg_map, Path("."), Args(n_jobs=n_jobs, force_rebuild=False)
+    )
 
 
 @pytest.mark.parametrize("n_jobs", [1, 4])
@@ -116,8 +118,10 @@ def test_build_error(n_jobs, monkeypatch):
 
     monkeypatch.setattr(buildall, "Package", MockPackage)
 
-    pkg_map = buildall.generate_dependency_graph(PACKAGES_DIR, "lxml")
+    pkg_map = buildall.generate_dependency_graph(PACKAGES_DIR, {"lxml"})
 
     with pytest.raises(ValueError, match="Failed build"):
-        Args = namedtuple("args", ["n_jobs"])
-        buildall.build_from_graph(pkg_map, Path("."), Args(n_jobs=n_jobs))
+        Args = namedtuple("args", ["n_jobs", "force_rebuild"])
+        buildall.build_from_graph(
+            pkg_map, Path("."), Args(n_jobs=n_jobs, force_rebuild=True)
+        )

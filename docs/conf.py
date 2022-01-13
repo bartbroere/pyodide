@@ -29,8 +29,9 @@ import micropip  # noqa
 
 # We hacked it so that autodoc will look for submodules, but only if we import
 # them here. TODO: look these up in the source directory?
-import pyodide.webloop
 import pyodide.console
+import pyodide.http
+import pyodide.webloop
 
 # The full version, including alpha/beta/rc tags.
 release = version = pyodide.__version__
@@ -49,6 +50,7 @@ extensions = [
     "myst_parser",
     "sphinx_js",
     "autodocsumm",
+    "sphinx_panels",
     "sphinx_pyodide",
     "sphinx_argparse_cli",
     #    "versionwarning.extension",
@@ -125,7 +127,7 @@ htmlhelp_basename = "Pyodidedoc"
 epub_exclude_files = ["search.html"]
 
 if "READTHEDOCS" in os.environ:
-    env = {"PYODIDE_BASE_URL": "https://cdn.jsdelivr.net/pyodide/v0.18.1/full/"}
+    env = {"PYODIDE_BASE_URL": "https://cdn.jsdelivr.net/pyodide/v0.19.0/full/"}
     os.makedirs("_build/html", exist_ok=True)
     res = subprocess.check_output(
         ["make", "-C", "..", "docs/_build/html/console.html"],

@@ -1,26 +1,43 @@
 import pytest
-from pathlib import Path
-import sys
 from textwrap import dedent
 from pyodide_build.testing import run_in_pyodide
-
-sys.path.append(str(Path(__file__).resolve().parents[2] / "src" / "py"))
-
 from pyodide import find_imports, eval_code, CodeRunner, should_quiet  # noqa: E402
 
 
 def test_find_imports():
 
     res = find_imports(
-        dedent(
-            """
-           import numpy as np
-           from scipy import sparse
-           import matplotlib.pyplot as plt
-           """
-        )
+        """
+        import numpy as np
+        from scipy import sparse
+        import matplotlib.pyplot as plt
+        """
     )
     assert set(res) == {"numpy", "scipy", "matplotlib"}
+
+    # If there is a syntax error in the code, find_imports should return empty
+    # list.
+    res = find_imports(
+        """
+        import numpy as np
+        from scipy import sparse
+        import matplotlib.pyplot as plt
+        for x in [1,2,3]
+        """
+    )
+    assert res == []
+
+
+def test_pyimport(selenium):
+    selenium.run_js(
+        """
+        let platform = pyodide.pyimport("platform");
+        assert(() => platform.machine() === "wasm32");
+        assert(() => !pyodide.globals.has("platform"))
+        assertThrows(() => pyodide.pyimport("platform;"), "PythonError", "ModuleNotFoundError: No module named 'platform;'");
+        platform.destroy();
+        """
+    )
 
 
 def test_code_runner():
@@ -297,22 +314,21 @@ def test_hiwire_is_promise(selenium):
 def test_keyboard_interrupt(selenium):
     x = selenium.run_js(
         """
-        x = new Int8Array(1)
-        pyodide._module.setInterruptBuffer(x)
+        let x = new Int8Array(1);
+        pyodide.setInterruptBuffer(x);
         self.triggerKeyboardInterrupt = function(){
             x[0] = 2;
         }
         try {
             pyodide.runPython(`
                 from js import triggerKeyboardInterrupt
-                x = 0
-                while True:
-                    x += 1
+                for x in range(100000):
                     if x == 2000:
                         triggerKeyboardInterrupt()
-            `)
+            `);
         } catch(e){}
-        return pyodide.runPython('x')
+        pyodide.setInterruptBuffer(undefined);
+        return pyodide.globals.get('x');
         """
     )
     assert 2000 < x < 2500
@@ -354,6 +370,114 @@ def test_run_python_last_exc(selenium):
         `);
         """
     )
+
+
+def test_check_interrupt(selenium):
+    assert selenium.run_js(
+        """
+        let buffer = new Uint8Array(1);
+        let x = 0;
+        pyodide.setInterruptBuffer(buffer);
+        function test(){
+            buffer[0] = 2;
+            pyodide.checkInterrupt();
+            x = 1;
+        }
+        self.test = test;
+        let err;
+        try {
+            pyodide.runPython(`
+                from js import test;
+                test();
+            `);
+        } catch(e){
+            err = e;
+        }
+        return x === 0 && err.message.includes("KeyboardInterrupt");
+        """
+    )
+
+    assert selenium.run_js(
+        """
+        let buffer = new Uint8Array(1);
+        pyodide.setInterruptBuffer(buffer);
+        buffer[0] = 2;
+        let err_code = 0;
+        for(let i = 0; i < 1000; i++){
+            err_code = err_code || pyodide._module._PyErr_CheckSignals();
+        }
+        let err_occurred = pyodide._module._PyErr_Occurred();
+        console.log({err_code, err_occurred});
+        pyodide._module._PyErr_Clear();
+        return buffer[0] === 0 && err_code === -1 && err_occurred !== 0;
+        """
+    )
+
+
+def test_check_interrupt_custom_signal_handler(selenium):
+    try:
+        selenium.run_js(
+            """
+            pyodide.runPython(`
+                import signal
+                interrupt_occurred = False
+                def signal_handler(*args):
+                    global interrupt_occurred
+                    interrupt_occurred = True
+                signal.signal(signal.SIGINT, signal_handler)
+                None
+            `);
+            """
+        )
+        selenium.run_js(
+            """
+            let buffer = new Uint8Array(1);
+            let x = 0;
+            pyodide.setInterruptBuffer(buffer);
+            function test(){
+                buffer[0] = 2;
+                pyodide.checkInterrupt();
+                x = 1;
+            }
+            self.test = test;
+            let err;
+            pyodide.runPython(`
+                interrupt_occurred = False
+                from js import test
+                test()
+                assert interrupt_occurred == True
+                del test
+            `);
+            """
+        )
+        assert selenium.run_js(
+            """
+            pyodide.runPython(`
+                interrupt_occurred = False
+            `);
+            let buffer = new Uint8Array(1);
+            pyodide.setInterruptBuffer(buffer);
+            buffer[0] = 2;
+            let err_code = 0;
+            for(let i = 0; i < 1000; i++){
+                err_code = err_code || pyodide._module._PyErr_CheckSignals();
+            }
+            let interrupt_occurred = pyodide.globals.get("interrupt_occurred");
+
+            return buffer[0] === 0 && err_code === 0 && interrupt_occurred;
+            """
+        )
+    finally:
+        # Restore signal handler
+        selenium.run_js(
+            """
+            pyodide.runPython(`
+                import signal
+                signal.signal(signal.SIGINT, signal.default_int_handler)
+                None
+            `);
+            """
+        )
 
 
 def test_async_leak(selenium):
@@ -473,6 +597,24 @@ def test_create_proxy(selenium):
             destroyed = False
             del f
             assert destroyed == True
+        `);
+        """
+    )
+
+
+def test_return_destroyed_value(selenium):
+    selenium.run_js(
+        """
+        self.f = function(x){ return x };
+        pyodide.runPython(`
+            from pyodide import create_proxy, JsException
+            from js import f
+            p = create_proxy([])
+            p.destroy()
+            try:
+                f(p)
+            except JsException as e:
+                assert str(e) == "Error: Object has already been destroyed"
         `);
         """
     )
@@ -617,7 +759,7 @@ def test_fatal_error(selenium_standalone):
 def test_reentrant_error(selenium):
     caught = selenium.run_js(
         """
-        function a(){
+        function raisePythonKeyboardInterrupt(){
             pyodide.globals.get("pyfunc")();
         }
         let caught = false;
@@ -625,9 +767,9 @@ def test_reentrant_error(selenium):
             pyodide.runPython(`
                 def pyfunc():
                     raise KeyboardInterrupt
-                from js import a
+                from js import raisePythonKeyboardInterrupt
                 try:
-                    a()
+                    raisePythonKeyboardInterrupt()
                 except Exception as e:
                     pass
             `);
@@ -638,6 +780,31 @@ def test_reentrant_error(selenium):
         """
     )
     assert caught
+
+
+def test_reentrant_fatal(selenium_standalone):
+    selenium = selenium_standalone
+    assert selenium.run_js(
+        """
+        function f(){
+            pyodide.globals.get("trigger_fatal_error")();
+        }
+        self.success = true;
+        try {
+            pyodide.runPython(`
+                from _pyodide_core import trigger_fatal_error
+                from js import f
+                try:
+                    f()
+                except Exception as e:
+                    # This code shouldn't be executed
+                    import js
+                    js.success = False
+            `);
+        } catch(e){}
+        return success;
+        """
+    )
 
 
 def test_restore_error(selenium):
@@ -743,3 +910,33 @@ def test_custom_stdin_stdout(selenium_standalone_noload):
     )
     assert stdoutstrings == ["Python initialization complete", "something to stdout"]
     assert stderrstrings == ["something to stderr"]
+
+
+def test_home_directory(selenium_standalone_noload):
+    selenium = selenium_standalone_noload
+    home = "/home/custom_home"
+    selenium.run_js(
+        """
+        let pyodide = await loadPyodide({
+            indexURL : './',
+            homedir : "%s",
+        });
+        return pyodide.runPython(`
+            import os
+            os.getcwd() == "%s"
+        `)
+        """
+        % (home, home)
+    )
+
+
+def test_sys_path0(selenium):
+    selenium.run_js(
+        """
+        pyodide.runPython(`
+            import sys
+            import os
+            assert os.getcwd() == sys.path[0]
+        `)
+        """
+    )

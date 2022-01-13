@@ -8,6 +8,9 @@ defaults: &defaults
     - EMSDK_NUM_CORES: 3
       EMCC_CORES: 3
       PYODIDE_JOBS: 3
+      # Make sure the ccache dir is consistent between core and package builds
+      # (it's not the case otherwise)
+      CCACHE_DIR: /root/.ccache/
 
 jobs:
   lint:
@@ -41,20 +44,29 @@ jobs:
 
       - restore_cache:
           keys:
-            - -{{ checksum "Makefile.envs" }}-v20201205-
+            - -core-{{ checksum "Makefile.envs" }}-{{ checksum "cpython/Makefile" }}-v20210910-
 
       - run:
           name: build emsdk
           no_output_timeout: 1200
           command: |
+            # This is necessary to use the ccache from emsdk
+            source pyodide_env.sh
+
             ccache -z
             make -C emsdk
             ccache -s
+
+            # Set mtime for EM_CONFIG to avoid ccache cache misses
+            touch -m -d '1 Jan 2021 12:00' emsdk/emsdk/.emscripten
 
       - run:
           name: build cpython
           no_output_timeout: 1200
           command: |
+            # This is necessary to use the ccache from emsdk
+            source pyodide_env.sh
+
             ccache -z
             make -C cpython
             ccache -s
@@ -63,9 +75,11 @@ jobs:
           name: build pyodide core
           no_output_timeout: 1200
           command: |
+            # This is necessary to use the ccache from emsdk
+            source pyodide_env.sh
+
             ccache -z
-            # The following packages are currently used in the main pyodide test suite
-            PYODIDE_PACKAGES="micropip,pyparsing,pytz,packaging,Jinja2" make
+            PYODIDE_PACKAGES="core" make
             ccache -s
 
       - run:
@@ -74,14 +88,19 @@ jobs:
 
       - save_cache:
           paths:
-            - ~/.ccache
-          key: -{{ checksum "Makefile.envs" }}-v20201205-{{ .BuildNum }}
+            - /root/.ccache
+          key: -core-{{ checksum "Makefile.envs" }}-{{ checksum "cpython/Makefile" }}-v20210910-
 
       - run:
           name: Clean up workspace
           command: |
             rm -rf cpython/{build,downloads}
             rm -rf emsdk/emsdk/binaryen
+
+      - run:
+          name: Zip build directory
+          command: |
+            tar cjf pyodide-build.tar.gz  build
 
       - persist_to_workspace:
           root: .
@@ -91,8 +110,16 @@ jobs:
       - store_artifacts:
           path: /root/repo/build/
 
-  build-packages:
+      - store_artifacts:
+          path: /root/repo/pyodide-build.tar.gz
+
+      - store_artifacts:
+          path: /root/repo/packages/build-logs
+
+  build-packages-no-numpy-dependents:
     <<: *defaults
+    resource_class: large
+
     steps:
       - checkout
 
@@ -101,15 +128,22 @@ jobs:
 
       - restore_cache:
           keys:
-            - -{{ checksum "Makefile.envs" }}-v20201205-
+            - -pkg-{{ checksum "Makefile.envs" }}-v20210911-
 
       - run:
           name: build packages
           no_output_timeout: 1800
           command: |
+            source pyodide_env.sh
+
+            # Set mtime for EM_CONFIG to avoid ccache cache misses
+            touch -m -d '1 Jan 2021 12:00' emsdk/emsdk/.emscripten
+
             ccache -z
-            make -C packages
+            PYODIDE_PACKAGES='*, no-numpy-dependents' make -C packages
             ccache -s
+          environment:
+            PYODIDE_JOBS: 5
 
       - run:
           name: check-size
@@ -117,8 +151,76 @@ jobs:
 
       - save_cache:
           paths:
-            - ~/.ccache
-          key: -{{ checksum "Makefile.envs" }}-v20201205-{{ .BuildNum }}
+            - /root/.ccache
+          key: -pkg-{{ checksum "Makefile.envs" }}-v20210911-
+
+      - persist_to_workspace:
+          root: .
+          paths:
+            - ./packages
+            - ./build
+
+      - run:
+          name: Zip build directory
+          command: |
+            tar cjf pyodide-build.tar.gz  build
+
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .
+
+      - store_artifacts:
+          path: /root/repo/build/
+
+      - store_artifacts:
+          path: /root/repo/pyodide-build.tar.gz
+
+      - store_artifacts:
+          path: /root/repo/packages/build-logs
+
+  build-packages:
+    <<: *defaults
+    resource_class: large
+
+    steps:
+      - checkout
+
+      - attach_workspace:
+          at: .
+
+      - restore_cache:
+          keys:
+            - -pkg-{{ checksum "Makefile.envs" }}-v20210911-
+
+      - run:
+          name: build packages
+          no_output_timeout: 1800
+          command: |
+            source pyodide_env.sh
+
+            # Set mtime for EM_CONFIG to avoid ccache cache misses
+            touch -m -d '1 Jan 2021 12:00' emsdk/emsdk/.emscripten
+
+            ccache -z
+            PYODIDE_PACKAGES='*' make -C packages
+            ccache -s
+          environment:
+            PYODIDE_JOBS: 5
+
+      - run:
+          name: check-size
+          command: ls -lh build/
+
+      - save_cache:
+          paths:
+            - /root/.ccache
+          key: -pkg-{{ checksum "Makefile.envs" }}-v20210911-
+
+      - run:
+          name: Zip build directory
+          command: |
+            tar cjf pyodide-build.tar.gz  build
 
       - persist_to_workspace:
           root: .
@@ -130,6 +232,9 @@ jobs:
           path: /root/repo/build/
 
       - store_artifacts:
+          path: /root/repo/pyodide-build.tar.gz
+
+      - store_artifacts:
           path: /root/repo/packages/build-logs
 
   test-main:
@@ -138,6 +243,7 @@ jobs:
         description: The tests to run.
         type: string
     <<: *defaults
+    resource_class: medium+
     steps:
       - attach_workspace:
           at: .
@@ -148,6 +254,7 @@ jobs:
             tools/pytest_wrapper.py \
               --junitxml=test-results/junit.xml \
               --verbose \
+              --durations 10 \
               << parameters.test-params >>
       - store_test_results:
           path: test-results
@@ -161,16 +268,6 @@ jobs:
           name: stack-size
           command: |
             pytest -s benchmark/stack_usage.py  | sed -n 's/## //pg'
-
-  test-emsdk:
-    <<: *defaults
-    resource_class: small
-    steps:
-      - attach_workspace:
-          at: .
-      - run:
-          name: test
-          command: make -C emsdk test
 
   test-python:
     # Unlike test-main this uses "resource_class small" and doesn't use "pytest_wrapper."
@@ -203,11 +300,21 @@ jobs:
           command: |
             cd src/js
             npx tsd
-            npm install
+            npm ci
             npm test
+      - run:
+          name: check if webpack cli works well with load-pyodide.js
+          command: |
+            git clone https://github.com/pyodide/pyodide-webpack-example.git
+            cd pyodide-webpack-example
+            npm ci
+            cp ../src/js/load-pyodide.js node_modules/pyodide/load-pyodide.js
+            head -20 node_modules/pyodide/load-pyodide.js
+            npx webpack
 
   benchmark:
     <<: *defaults
+    resource_class: medium+
     steps:
       - checkout
       - attach_workspace:
@@ -308,16 +415,23 @@ workflows:
             tags:
               only: /.*/
 
-      - build-packages:
+      - build-packages-no-numpy-dependents:
           requires:
             - build-core
           filters:
             tags:
               only: /.*/
 
+      - build-packages:
+          requires:
+            - build-packages-no-numpy-dependents
+          filters:
+            tags:
+              only: /.*/
+
       - test-main:
           name: test-core-chrome
-          test-params: -k "chrome and not webworker" src packages/micropip
+          test-params: -k "chrome and not webworker" src packages/micropip  packages/fpcast-test packages/sharedlib-test-py/
           requires:
             - build-core
           filters:
@@ -326,7 +440,7 @@ workflows:
 
       - test-main:
           name: test-core-firefox
-          test-params: -k "firefox and not webworker" src packages/micropip
+          test-params: -k "firefox and not webworker" src packages/micropip packages/fpcast-test packages/sharedlib-test-py/
           requires:
             - build-core
           filters:
@@ -335,7 +449,7 @@ workflows:
 
       - test-main:
           name: test-core-node
-          test-params: -k node src packages/micropip
+          test-params: -k node src packages/micropip packages/fpcast-test packages/sharedlib-test-py/
           requires:
             - build-core
           filters:
@@ -387,13 +501,6 @@ workflows:
             tags:
               only: /.*/
 
-      - test-emsdk:
-          requires:
-            - build-core
-          filters:
-            tags:
-              only: /.*/
-
       - test-js:
           requires:
             - build-core
@@ -421,7 +528,6 @@ workflows:
             - test-python
             - test-core-firefox
             - test-packages-firefox
-            - test-emsdk
           filters:
             branches:
               ignore: /.*/
@@ -433,7 +539,6 @@ workflows:
             - test-python
             - test-core-firefox
             - test-packages-firefox
-            - test-emsdk
           filters:
             branches:
               only: main

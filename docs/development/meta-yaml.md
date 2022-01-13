@@ -1,14 +1,14 @@
-=(meta-yaml-spec)
+(meta-yaml-spec)=
 
 # The meta.yaml specification
 
 Packages are defined by writing a `meta.yaml` file. The format of these files is
 based on the `meta.yaml` files used to build [Conda
-packages](https://conda.io/docs/user-guide/tasks/build-packages/define-metadata.html),
+packages](https://docs.conda.io/projects/conda-build/en/latest/resources/define-metadata.html),
 though it is much more limited. The most important limitation is that Pyodide
 assumes there will only be one version of a given library available, whereas
 Conda allows the user to specify the versions of each package that they want to
-install. Despite the limitations, it is recommended to use existing conda 
+install. Despite the limitations, it is recommended to use existing conda
 package definitions as a starting point to create Pyodide packages. In
 general, however, one should not
 expect Conda packages to "just work" with Pyodide, see {pr}`795`
@@ -23,7 +23,7 @@ The name of the package. It must match the name of the package used when
 expanding the tarball, which is sometimes different from the name of the package
 in the Python namespace when installed. It must also match the name of the
 directory in which the `meta.yaml` file is placed. It can only contain
-alpha-numeric characters, `-`, and `_`.
+alphanumeric characters, `-`, and `_`.
 
 ### `package/version`
 
@@ -38,7 +38,7 @@ The URL of the source tarball.
 The tarball may be in any of the formats supported by Python's
 `shutil.unpack_archive`: `tar`, `gztar`, `bztar`, `xztar`, and `zip`.
 
-## `source/extract_dir`
+### `source/extract_dir`
 
 The top level directory name of the contents of the source tarball (i.e. once
 you extract the tarball, all the contents are in the directory named
@@ -95,7 +95,7 @@ Extra arguments to pass to the compiler when building for WebAssembly.
 ### `build/cxxflags`
 
 Extra arguments to pass to the compiler when building C++ files for WebAssembly.
-Note that both `cflags` and `cxxflags` will be used when compiling C++ files. 
+Note that both `cflags` and `cxxflags` will be used when compiling C++ files.
 A common example would be to use `-std=c++11` for code that makes use of C++11 features.
 
 (This key is not in the Conda spec).
@@ -112,7 +112,7 @@ Should be set to true for library packages. Library packages are packages that a
 
 ### `build/sharedlibrary`
 
-Should be set to true for shared library packages. Shared library packages are packages that are needed for other packages, but are loaded dynamically when Pyodide is run. For shared library packages, the script specified in the `build/script` section is run to compile the library. The script should build the shared library and copy into into a subfolder of the source folder called `install`. Files or folders in this install folder will be packaged to make the Pyodide package. See the [CLAPACK meta.yaml](https://github.com/pyodide/pyodide/blob/main/packages/CLAPACK/meta.yaml) for an example of a shared library specification.
+Should be set to true for shared library packages. Shared library packages are packages that are needed for other packages, but are loaded dynamically when Pyodide is run. For shared library packages, the script specified in the `build/script` section is run to compile the library. The script should build the shared library and copy it into a subfolder of the source folder called `install`. Files or folders in this install folder will be packaged to make the Pyodide package. See the [CLAPACK meta.yaml](https://github.com/pyodide/pyodide/blob/main/packages/CLAPACK/meta.yaml) for an example of a shared library specification.
 
 ### `build/script`
 
@@ -120,7 +120,7 @@ The script section is required for a library package (`build/library` set to tru
 
 ### `build/post`
 
-Shell commands to run after building the library. These are run inside of
+Shell commands to run after building the library. These are run with
 `bash`, and there are two special environment variables defined:
 
 - `$SITEPACKAGES`: The `site-packages` directory into which the package has been installed.
@@ -133,6 +133,12 @@ Shell commands to run after building the library. These are run inside of
 A list of strings of the form `<old_name>=<new_name>`, to rename libraries when linking. This in particular
 might be necessary when using emscripten ports.
 For instance, `png16=png` is currently used in matplotlib.
+
+### `build/unvendor-tests`
+
+Whether to unvendor tests found in the installation folder to a separate
+package `<package-name>-tests`. If this option is true and no tests are found,
+the test package will not be created. Default: true.
 
 ## `requirements`
 

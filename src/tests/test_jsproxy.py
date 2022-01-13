@@ -337,6 +337,158 @@ def test_jsproxy_call_meth_js_kwargs(selenium):
     )
 
 
+def test_call_pyproxy_destroy_args(selenium):
+    selenium.run_js(
+        """
+        let y;
+        self.f = function(x){ y = x; }
+        pyodide.runPython(`
+            from js import f
+            f({})
+            f([])
+        `);
+        assertThrows(() => y.length, "Error", "This borrowed proxy was automatically destroyed");
+        """
+    )
+
+    selenium.run_js(
+        """
+        let y;
+        self.f = async function(x){
+            await sleep(5);
+            y = x;
+        }
+        await pyodide.runPythonAsync(`
+            from js import f
+            await f({})
+            await f([])
+        `);
+        assertThrows(() => y.length, "Error", "This borrowed proxy was automatically destroyed");
+        """
+    )
+
+
+def test_call_pyproxy_set_global(selenium):
+    selenium.run_js(
+        """
+        self.setGlobal = function(x){
+            if(pyodide.isPyProxy(self.myGlobal)){
+                self.myGlobal.destroy();
+            }
+            if(pyodide.isPyProxy(x)){
+                x = x.copy();
+            }
+            self.myGlobal = x;
+        }
+        pyodide.runPython(`
+            from js import setGlobal
+            setGlobal(2)
+            setGlobal({})
+            setGlobal([])
+            setGlobal(3)
+        `);
+        """
+    )
+
+    selenium.run_js(
+        """
+        self.setGlobal = async function(x){
+            await sleep(5);
+            if(pyodide.isPyProxy(self.myGlobal)){
+                self.myGlobal.destroy();
+            }
+            if(pyodide.isPyProxy(x)){
+                x = x.copy();
+            }
+            self.myGlobal = x;
+        }
+        await pyodide.runPythonAsync(`
+            from js import setGlobal
+            await setGlobal(2)
+            await setGlobal({})
+            await setGlobal([])
+            await setGlobal(3)
+        `);
+        """
+    )
+
+
+def test_call_pyproxy_destroy_result(selenium):
+    selenium.run_js(
+        """
+        self.f = function(){
+            let dict = pyodide.globals.get("dict");
+            let result = dict();
+            dict.destroy();
+            return result;
+        }
+        pyodide.runPython(`
+            from js import f
+            import sys
+            d = f()
+            assert sys.getrefcount(d) == 2
+        `);
+        """
+    )
+
+    selenium.run_js(
+        """
+        self.f = async function(){
+            await sleep(5);
+            let dict = pyodide.globals.get("dict");
+            let result = dict();
+            dict.destroy();
+            return result;
+        }
+        await pyodide.runPythonAsync(`
+            from js import f
+            import sys
+            d = await f()
+        `);
+        pyodide.runPython(`
+            assert sys.getrefcount(d) == 2
+        `);
+        """
+    )
+
+
+@pytest.mark.skip_refcount_check
+def test_call_pyproxy_return_arg(selenium):
+    selenium.run_js(
+        """
+        self.f = function f(x){
+            return x;
+        }
+        pyodide.runPython(`
+            from js import f
+            l = [1,2,3]
+            x = f(l)
+            assert x is l
+            import sys
+            assert sys.getrefcount(x) == 3
+        `);
+        """
+    )
+    selenium.run_js(
+        """
+        self.f = async function f(x){
+            await sleep(5);
+            return x;
+        }
+        await pyodide.runPythonAsync(`
+            from js import f
+            l = [1,2,3]
+            x = await f(l)
+            assert x is l
+        `);
+        pyodide.runPython(`
+            import sys
+            assert sys.getrefcount(x) == 3
+        `);
+        """
+    )
+
+
 @run_in_pyodide
 def test_import_invocation():
     import js
@@ -364,6 +516,44 @@ def test_nested_attribute_access():
 
     assert js.Float64Array.BYTES_PER_ELEMENT == 8
     assert self.Float64Array.BYTES_PER_ELEMENT == 8
+
+
+def test_destroy_attribute(selenium):
+    selenium.run_js(
+        """
+        let test = pyodide.runPython(`
+            class Test:
+                a = {}
+            test = Test()
+            test
+        `);
+        pyodide.runPython(`
+            import sys
+            assert sys.getrefcount(test) == 3
+            assert sys.getrefcount(test.a) == 2
+        `);
+        test.a;
+        pyodide.runPython(`
+            assert sys.getrefcount(test) == 3
+            assert sys.getrefcount(test.a) == 3
+        `);
+        test.a.destroy();
+        pyodide.runPython(`
+            assert sys.getrefcount(test) == 3
+            assert sys.getrefcount(test.a) == 2
+        `);
+        test.a;
+        pyodide.runPython(`
+            assert sys.getrefcount(test) == 3
+            assert sys.getrefcount(test.a) == 3
+        `);
+        test.destroy();
+        pyodide.runPython(`
+            assert sys.getrefcount(test) == 2
+            assert sys.getrefcount(test.a) == 2
+        `);
+        """
+    )
 
 
 @run_in_pyodide
@@ -634,7 +824,7 @@ def test_mixins_calls(selenium):
         assert a == b, desc
 
 
-def test_mixins_errors(selenium):
+def test_mixins_errors_1(selenium):
     selenium.run_js(
         """
         self.a = [];
@@ -657,7 +847,13 @@ def test_mixins_errors(selenium):
             with raises(KeyError):
                 del b[0]
         `);
+        """
+    )
 
+
+def test_mixins_errors_2(selenium):
+    selenium.run_js(
+        """
         self.c = {
             next(){},
             length : 1,
@@ -677,7 +873,7 @@ def test_mixins_errors(selenium):
         delete c.has;
         delete c.then;
         delete d[Symbol.iterator];
-        await pyodide.runPythonAsync(`
+        pyodide.runPython(`
             from contextlib import contextmanager
             from unittest import TestCase
             @contextmanager
@@ -699,10 +895,19 @@ def test_mixins_errors(selenium):
                 c[0] = 7
             with raises(JsException, match=msg):
                 del c[0]
+        `)
+
+        await pyodide.runPythonAsync(`
             with raises(TypeError, match="can't be used in 'await' expression"):
                 await c
         `);
+        """
+    )
 
+
+def test_mixins_errors_3(selenium):
+    selenium.run_js(
+        """
         self.l = [0, false, NaN, undefined, null];
         self.l[6] = 7;
         await pyodide.runPythonAsync(`
@@ -723,7 +928,13 @@ def test_mixins_errors(selenium):
             del l[4]
             l[3]; l[4]
         `);
+        """
+    )
 
+
+def test_mixins_errors_4(selenium):
+    selenium.run_js(
+        """
         self.l = [0, false, NaN, undefined, null];
         self.l[6] = 7;
         let a = Array.from(self.l.entries());
@@ -804,6 +1015,53 @@ def test_buffer(selenium):
     )
 
 
+@run_in_pyodide
+def test_buffer_to_file():
+    from js import Uint8Array
+
+    a = Uint8Array.new(range(10))
+    from tempfile import TemporaryFile
+
+    with TemporaryFile() as f:
+        a.to_file(f)
+        f.seek(0)
+        assert f.read() == a.to_bytes()
+
+        b = b"abcdef"
+        f.write(b)
+        f.seek(-len(b), 1)
+        a.from_file(f)
+        assert list(a.subarray(0, len(b)).to_bytes()) == list(b)
+
+
+@run_in_pyodide
+def test_buffer_into_file():
+    from js import Uint8Array
+
+    a = Uint8Array.new(range(10))
+    from tempfile import TemporaryFile
+
+    with TemporaryFile() as f:
+        b = a.to_bytes()
+        a._into_file(f)
+        f.seek(0)
+        assert f.read() == b
+
+
+@run_in_pyodide
+def test_buffer_into_file2():
+    """Check that no copy occurred."""
+    from js import Uint8Array
+    import pyodide_js
+
+    a = Uint8Array.new(range(10))
+    from tempfile import TemporaryFile
+
+    with TemporaryFile() as f:
+        a._into_file(f)
+        assert pyodide_js.FS.streams[f.fileno()].node.contents.buffer == a.buffer
+
+
 def test_buffer_assign_back(selenium):
     result = selenium.run_js(
         """
@@ -818,6 +1076,68 @@ def test_buffer_assign_back(selenium):
         """
     )
     assert result == [1, 20, 3, 77, 5, 9]
+
+
+def test_buffer_conversions(selenium):
+    selenium.run_js(
+        f"""
+        self.s = "abcဴ";
+        self.jsbytes = new TextEncoder().encode(s);
+        pyodide.runPython(`
+            from js import s, jsbytes
+            memoryview_conversion = jsbytes.to_memoryview()
+            bytes_conversion = jsbytes.to_bytes()
+
+            assert bytes_conversion.decode() == s
+            assert bytes(memoryview_conversion) == bytes_conversion
+            del jsbytes
+        `);
+        """
+    )
+
+
+def test_tostring_encoding(selenium):
+    selenium.run_js(
+        """
+        // windows-1251 encoded "Привет, мир!" which is Russian for "Hello, world!"
+        self.bytes = new Uint8Array([207, 240, 232, 226, 229, 242, 44, 32, 236, 232, 240, 33]);
+        pyodide.runPython(`
+            from js import bytes
+            assert bytes.to_string('windows-1251') == "Привет, мир!"
+        `);
+        """
+    )
+
+
+def test_tostring_error(selenium):
+    selenium.run_js(
+        """
+        // windows-1251 encoded "Привет, мир!" which is Russian for "Hello, world!"
+        self.bytes = new Uint8Array([207, 240, 232, 226, 229, 242, 44, 32, 236, 232, 240, 33]);
+        pyodide.runPython(`
+            from js import bytes
+            from unittest import TestCase
+            raises = TestCase().assertRaises
+            with raises(ValueError):
+                bytes.to_string()
+        `);
+        """
+    )
+
+
+def test_duck_buffer_method_presence(selenium):
+    selenium.run_js(
+        """
+        self.bytes = new Uint8Array([207, 240, 232, 226, 229, 242, 44, 32, 236, 232, 240, 33]);
+        self.other = {};
+        pyodide.runPython(`
+            from js import bytes, other
+            buffer_methods = {"assign", "assign_to", "to_string", "to_memoryview", "to_bytes"}
+            assert buffer_methods < set(dir(bytes))
+            assert not set(dir(other)).intersection(buffer_methods)
+        `);
+        """
+    )
 
 
 def test_memory_leaks(selenium):

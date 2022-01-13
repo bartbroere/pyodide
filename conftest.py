@@ -1,7 +1,7 @@
 """
 Various common utilities for testing.
 """
-
+import re
 import contextlib
 import json
 import multiprocessing
@@ -22,7 +22,7 @@ TEST_PATH = ROOT_PATH / "src" / "tests"
 BUILD_PATH = ROOT_PATH / "build"
 
 sys.path.append(str(ROOT_PATH / "pyodide-build"))
-sys.path.append(str(ROOT_PATH / "src/py"))
+sys.path.append(str(ROOT_PATH / "src" / "py"))
 
 from pyodide_build.testing import set_webdriver_script_timeout, parse_driver_timeout
 
@@ -59,6 +59,21 @@ def pytest_configure(config):
         return result
 
     config.cwd_relative_nodeid = cwd_relative_nodeid
+
+
+def pytest_collection_modifyitems(config, items):
+    """Called after collect is completed.
+    Parameters
+    ----------
+    config : pytest config
+    items : list of collected items
+    """
+    for item in items:
+        _maybe_skip_test(item, delayed=True)
+
+
+def _package_is_built(package_name: str) -> bool:
+    return (BUILD_PATH / f"{package_name}.data").exists()
 
 
 class JavascriptException(Exception):
@@ -106,6 +121,9 @@ class SeleniumWrapper:
                 pyodide.pyodide_py.register_js_module;
                 pyodide.pyodide_py.unregister_js_module;
                 pyodide.pyodide_py.find_imports;
+                pyodide._module._util_module = pyodide.pyimport("pyodide._util");
+                pyodide._module._util_module.unpack_buffer_archive;
+                pyodide._module.importlib.invalidate_caches;
                 pyodide.runPython("");
                 """,
             )
@@ -226,6 +244,13 @@ class SeleniumWrapper:
     def get_num_hiwire_keys(self):
         return self.run_js("return pyodide._module.hiwire.num_keys();")
 
+    @property
+    def force_test_fail(self) -> bool:
+        return self.run_js("return !!pyodide._module.fail_test;")
+
+    def clear_force_test_fail(self):
+        self.run_js("pyodide._module.fail_test = false;")
+
     def save_state(self):
         self.run_js("self.__savedState = pyodide._module.saveState();")
 
@@ -293,7 +318,7 @@ class FirefoxWrapper(SeleniumWrapper):
         from selenium.webdriver.firefox.options import Options
 
         options = Options()
-        options.add_argument("-headless")
+        options.add_argument("--headless")
 
         return Firefox(executable_path="geckodriver", options=options)
 
@@ -415,14 +440,20 @@ def pytest_runtest_call(item):
             trace_pyproxies
             and pytest.mark.skip_refcount_check.mark not in item.own_markers
         )
-        yield from test_wrapper_check_for_memory_leaks(
+        yield from extra_checks_test_wrapper(
             selenium, trace_hiwire_refs, trace_pyproxies
         )
     else:
         yield
 
 
-def test_wrapper_check_for_memory_leaks(selenium, trace_hiwire_refs, trace_pyproxies):
+def extra_checks_test_wrapper(selenium, trace_hiwire_refs, trace_pyproxies):
+    """Extra conditions for test to pass:
+    1. No explicit request for test to fail
+    2. No leaked JsRefs
+    3. No leaked PyProxys
+    """
+    selenium.clear_force_test_fail()
     init_num_keys = selenium.get_num_hiwire_keys()
     if trace_pyproxies:
         selenium.enable_pyproxy_tracing()
@@ -439,6 +470,8 @@ def test_wrapper_check_for_memory_leaks(selenium, trace_hiwire_refs, trace_pypro
         # get_result (we don't want to override the error message by raising a
         # different error here.)
         a.get_result()
+    if selenium.force_test_fail:
+        raise Exception("Test failure explicitly requested but no error was raised.")
     if trace_pyproxies and trace_hiwire_refs:
         delta_proxies = selenium.get_num_proxies() - init_num_proxies
         delta_keys = selenium.get_num_hiwire_keys() - init_num_keys
@@ -448,8 +481,59 @@ def test_wrapper_check_for_memory_leaks(selenium, trace_hiwire_refs, trace_pypro
         assert delta_keys <= 0
 
 
+def _maybe_skip_test(item, delayed=False):
+    """If necessary skip test at the fixture level, to avoid
+
+    loading the selenium_standalone fixture which takes a long time.
+    """
+    skip_msg = None
+    # Testing a package. Skip the test if the package is not built.
+    match = re.match(
+        r".*/packages/(?P<name>[\w\-]+)/test_[\w\-]+\.py", str(item.parent.fspath)
+    )
+    if match:
+        package_name = match.group("name")
+        if not _package_is_built(package_name):
+            skip_msg = f"package '{package_name}' is not built."
+
+    # Common package import test. Skip it if the package is not built.
+    if (
+        skip_msg is None
+        and str(item.fspath).endswith("test_packages_common.py")
+        and item.name.startswith("test_import")
+    ):
+        match = re.match(
+            r"test_import\[(firefox|chrome|node)-(?P<name>[\w-]+)\]", item.name
+        )
+        if match:
+            package_name = match.group("name")
+            if not _package_is_built(package_name):
+                # If the test is going to be skipped remove the
+                # selenium_standalone as it takes a long time to initialize
+                skip_msg = f"package '{package_name}' is not built."
+        else:
+            raise AssertionError(
+                f"Couldn't parse package name from {item.name}. This should not happen!"
+            )
+
+    # TODO: also use this hook to skip doctests we cannot run (or run them
+    # inside the selenium wrapper)
+
+    if skip_msg is not None:
+        if delayed:
+            item.add_marker(pytest.mark.skip(reason=skip_msg))
+        else:
+            pytest.skip(skip_msg)
+
+
 @contextlib.contextmanager
 def selenium_common(request, web_server_main, load_pyodide=True):
+    """Returns an initialized selenium object.
+
+    If `_should_skip_test` indicate that the test will be skipped,
+    return None, as initializing Pyodide for selenium is expensive
+    """
+
     server_hostname, server_port, server_log = web_server_main
     if request.param == "firefox":
         cls = FirefoxWrapper
@@ -473,6 +557,9 @@ def selenium_common(request, web_server_main, load_pyodide=True):
 
 @pytest.fixture(params=["firefox", "chrome", "node"], scope="function")
 def selenium_standalone(request, web_server_main):
+    # Avoid loading the fixture if the test is going to be skipped
+    _maybe_skip_test(request.node)
+
     with selenium_common(request, web_server_main) as selenium:
         with set_webdriver_script_timeout(
             selenium, script_timeout=parse_driver_timeout(request)
@@ -485,6 +572,9 @@ def selenium_standalone(request, web_server_main):
 
 @contextlib.contextmanager
 def selenium_standalone_noload_common(request, web_server_main):
+    # Avoid loading the fixture if the test is going to be skipped
+    _maybe_skip_test(request.node)
+
     with selenium_common(request, web_server_main, load_pyodide=False) as selenium:
         with set_webdriver_script_timeout(
             selenium, script_timeout=parse_driver_timeout(request)
@@ -497,6 +587,8 @@ def selenium_standalone_noload_common(request, web_server_main):
 
 @pytest.fixture(params=["firefox", "chrome"], scope="function")
 def selenium_webworker_standalone(request, web_server_main):
+    # Avoid loading the fixture if the test is going to be skipped
+    _maybe_skip_test(request.node)
     with selenium_standalone_noload_common(request, web_server_main) as selenium:
         yield selenium
 
@@ -505,6 +597,8 @@ def selenium_webworker_standalone(request, web_server_main):
 def selenium_standalone_noload(request, web_server_main):
     """Only difference between this and selenium_webworker_standalone is that
     this also tests on node."""
+    # Avoid loading the fixture if the test is going to be skipped
+    _maybe_skip_test(request.node)
     with selenium_standalone_noload_common(request, web_server_main) as selenium:
         yield selenium
 

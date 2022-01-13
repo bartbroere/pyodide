@@ -26,7 +26,7 @@ def test_pyproxy_class(selenium):
         self.f_props = Object.getOwnPropertyNames(f);
         delete f.baz
         pyodide.runPython(`assert not hasattr(f, 'baz')`)
-        assert(() => f.toString().startsWith("<Foo"));
+        assert(() => f.toString().startsWith("<__main__.Foo"));
         f.destroy();
         """
     )
@@ -68,6 +68,40 @@ def test_pyproxy_class(selenium):
     )
 
 
+def test_del_builtin(selenium):
+    msg = "NameError"
+    with pytest.raises(selenium.JavascriptException, match=msg):
+        # can't del a builtin
+        selenium.run("del open")
+    # Can still get it even though we tried to del it.
+    assert selenium.run_js(
+        """
+        let open = pyodide.globals.get("open");
+        let result = !!open;
+        open.destroy();
+        return result;
+        """
+    )
+    assert selenium.run_js("return pyodide.globals.get('__name__');") == "__main__"
+
+
+def test_in_globals(selenium):
+    selenium.run("yyyyy = 7")
+    assert (
+        selenium.run_js(
+            """
+            let result = [];
+            result.push(pyodide.globals.has("xxxxx"));
+            result.push(pyodide.globals.has("yyyyy"));
+            result.push(pyodide.globals.has("globals"));
+            result.push(pyodide.globals.has("open"));
+            return result;
+            """
+        )
+        == [False, True, True, True]
+    )
+
+
 def test_pyproxy_copy(selenium):
     selenium.run_js(
         """
@@ -80,57 +114,45 @@ def test_pyproxy_copy(selenium):
     )
 
 
-@pytest.mark.skip_pyproxy_check
 def test_pyproxy_refcount(selenium):
-    result = selenium.run_js(
+    selenium.run_js(
         """
         function getRefCount(){
             return pyodide.runPython("sys.getrefcount(pyfunc)");
         }
-        let result = [];
         self.jsfunc = function (f) { f(); };
         pyodide.runPython(`
             import sys
-            from js import self
+            from js import jsfunc
 
             def pyfunc(*args, **kwargs):
                 print(*args, **kwargs)
         `);
 
         // the refcount should be 2 because:
-        //
         // 1. pyfunc exists
         // 2. pyfunc is referenced from the sys.getrefcount()-test below
-
-        result.push([getRefCount(), 2]);
-
-        // the refcount should be 3 because:
         //
-        // 1. pyfunc exists
-        // 2. one reference from PyProxy to pyfunc is alive
-        // 3. pyfunc is referenced from the sys.getrefcount()-test below
+        // Each time jsfunc is called a new PyProxy to pyfunc is created. That
+        // PyProxy is destroyed when the call finishes, so the calls to
+        // jsfunc(pyfunc) do not change the reference count.
+
+        assert(() => getRefCount() === 2);
 
         pyodide.runPython(`
-            self.jsfunc(pyfunc) # creates new PyProxy
+            jsfunc(pyfunc)
         `);
 
-        result.push([getRefCount(), 3])
-        pyodide.runPython(`
-            self.jsfunc(pyfunc) # create new PyProxy
-            self.jsfunc(pyfunc) # create new PyProxy
-        `)
+        assert(() => getRefCount() === 2);
 
-        // the refcount should be 3 because:
-        //
-        // 1. pyfunc exists
-        // 2. one reference from PyProxy to pyfunc is alive
-        // 3. pyfunc is referenced from the sys.getrefcount()-test
-        result.push([getRefCount(), 5]);
-        return result;
+        pyodide.runPython(`
+            jsfunc(pyfunc)
+            jsfunc(pyfunc)
+        `)
+        assert(() => getRefCount() === 2);
+        pyodide.runPython(`del jsfunc`)
         """
     )
-    for [a, b] in result:
-        assert a == b, result
 
 
 def test_pyproxy_destroy(selenium):
@@ -221,6 +243,40 @@ def test_pyproxy_iter(selenium):
         """
     )
     assert result == result2
+
+
+def test_pyproxy_iter_error(selenium):
+    selenium.run_js(
+        """
+        let t = pyodide.runPython(`
+            class T:
+                def __iter__(self):
+                    raise Exception('hi')
+            T()
+        `);
+        assertThrows(() => t[Symbol.iterator](), "PythonError", "hi");
+        t.destroy();
+        """
+    )
+
+
+def test_pyproxy_iter_error2(selenium):
+    selenium.run_js(
+        """
+        let gen = pyodide.runPython(`
+            def g():
+                yield 1
+                yield 2
+                raise Exception('hi')
+                yield 3
+            g()
+        `);
+        assert(() => gen.next().value === 1);
+        assert(() => gen.next().value === 2);
+        assertThrows(() => gen.next(), "PythonError", "hi");
+        gen.destroy();
+        """
+    )
 
 
 def test_pyproxy_get_buffer(selenium):
@@ -634,6 +690,7 @@ def test_pyproxy_gc_destroy(selenium):
         get_ref_count.destroy();
         """
     )
+    selenium.collect_garbage()
     selenium.collect_garbage()
     selenium.run(
         """

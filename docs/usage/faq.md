@@ -1,31 +1,49 @@
 # Frequently Asked Questions
 
-## How can I load external Python files in Pyodide?
+(load-external-files-in-pyodide)=
 
-The two possible solutions are,
+## How can I load external files in Pyodide?
 
-- include these files in a Python package, build a pure Python wheel with
-  `python setup.py bdist_wheel` and
-  {ref}`load it with micropip <micropip-installing-from-arbitrary-urls>`.
-- fetch the Python code as a string and evaluate it in Python,
-  ```js
-  pyodide.runPython(await (await fetch("https://some_url/...")).text());
-  ```
+In order to use external files in Pyodide, you should download and save them
+to the virtual file system.
 
-In both cases, files need to be served with a web server and cannot be loaded from local file system.
+For that purpose, Pyodide provides {any}`pyodide.http.pyfetch`,
+which is a convenient wrapper of JavaScript `fetch`:
+
+```pyodide
+pyodide.runPython(`
+  from pyodide.http import pyfetch
+  response = await pyfetch("https://some_url/...")
+  if response.status == 200:
+      with open("<output_file>", "wb") as f:
+          f.write(await response.bytes())
+`)
+```
+
+```{admonition} Why can't I just use urllib or requests?
+:class: warning
+
+We currently can’t use such packages since sockets are not available in Pyodide.
+See {ref}`http-client-limit` for more information.
+```
 
 ## Why can't I load files from the local file system?
 
-For security reasons Javascript in the browser is not allowed to load local data
-files. You need to serve them with a web-browser. There is a
+For security reasons JavaScript in the browser is not allowed to load local data files
+(for example, `file:///path/to/local/file.data`).
+You will run into Network Errors, due to the [Same Origin Policy](https://en.wikipedia.org/wiki/Same-origin_policy).
+There is a
 [File System API](https://wicg.github.io/file-system-access/) supported in Chrome
 but not in Firefox or Safari.
 
+For development purposes, you can serve your files with a
+[web server](https://developer.mozilla.org/en-US/docs/Learn/Common_questions/set_up_a_local_testing_server).
+
 ## How can I change the behavior of {any}`runPython <pyodide.runPython>` and {any}`runPythonAsync <pyodide.runPythonAsync>`?
 
-You can directly call Python functions from Javascript. For many purposes it
+You can directly call Python functions from JavaScript. For most purposes it
 makes sense to make your own Python function as an entrypoint and call that
-instead of using `runPython`. The definitions of {any}`runPython <pyodide.runPython>` and {any}`runPythonAsync <pyodide.runPythonAsync>` are very
+instead of redefining `runPython`. The definitions of {any}`runPython <pyodide.runPython>` and {any}`runPythonAsync <pyodide.runPythonAsync>` are very
 simple:
 
 ```javascript
@@ -36,13 +54,7 @@ function runPython(code) {
 
 ```javascript
 async function runPythonAsync(code) {
-  let coroutine = pyodide.pyodide_py.eval_code_async(code, pyodide.globals);
-  try {
-    let result = await coroutine;
-    return result;
-  } finally {
-    coroutine.destroy();
-  }
+  return await pyodide.pyodide_py.eval_code_async(code, pyodide.globals);
 }
 ```
 
@@ -118,10 +130,10 @@ if "PYODIDE" in os.environ:
 We used to use the environment variable `PYODIDE_BASE_URL` for this purpose,
 but this usage is deprecated.
 
-## How do I create custom Python packages from Javascript?
+## How do I create custom Python packages from JavaScript?
 
-Put a collection of functions into a Javascript object and use {any}`pyodide.registerJsModule`:
-Javascript:
+Put a collection of functions into a JavaScript object and use {any}`pyodide.registerJsModule`:
+JavaScript:
 
 ```javascript
 let my_module = {
@@ -176,7 +188,7 @@ bad idea to unpickle any data sent from the client. For sending data from client
 to server, try some other serialization format like JSON.
 ```
 
-## How can I use a Python function as an event handler and then remove it later?
+## How can I use a Python function as an event handler?
 
 Note that the most straight forward way of doing this will not work:
 
@@ -186,13 +198,11 @@ def f(*args):
     document.querySelector("h1").innerHTML += "(>.<)"
 
 document.body.addEventListener('click', f)
-document.body.removeEventListener('click', f)
 ```
 
-This leaks `f` and does not remove the event listener (instead
-`removeEventListener` will silently do nothing).
+Now every time you click, an error will be raised (see {ref}`call-js-from-py`).
 
-To do this correctly use :func:`pyodide.create_proxy` as follows:
+To do this correctly use {func}`pyodide.create_proxy` as follows:
 
 ```py
 from js import document
@@ -207,11 +217,9 @@ document.body.removeEventListener('click', proxy_f)
 proxy_f.destroy()
 ```
 
-This also avoids memory leaks.
-
 ## How can I use fetch with optional arguments from Python?
 
-The most obvious translation of the Javascript code won't work:
+The most obvious translation of the JavaScript code won't work:
 
 ```py
 import json
@@ -223,8 +231,8 @@ resp = await js.fetch('/someurl', {
 })
 ```
 
-this leaks the dictionary and the `fetch` api ignores the options that we
-attempted to provide. You can do this correctly as follows:
+The `fetch` API ignores the options that we attempted to provide. You can do
+this correctly in one of two ways:
 
 ```py
 import json
@@ -238,15 +246,45 @@ resp = await js.fetch('example.com/some_api',
 )
 ```
 
+or:
+
+```py
+import json
+from pyodide import to_js
+from js import Object
+resp = await js.fetch('example.com/some_api', to_js({
+  "method": "POST",
+  "body": json.dumps({ "some" : "json" }),
+  "credentials": "same-origin",
+  "headers": { "Content-Type": "application/json" }
+}, dict_converter=Object.fromEntries)
+```
+
 ## How can I control the behavior of stdin / stdout / stderr?
 
-This works much the same as it does in native Python: you can overwrite
-`sys.stdin`, `sys.stdout`, and `sys.stderr` respectively. If you want to do it
-temporarily, it's recommended to use
+If you wish to override `stdin`, `stdout` or `stderr` for the entire Pyodide
+runtime, you can pass options to {any}`loadPyodide <globalThis.loadPyodide>`: If
+you say
+
+```
+loadPyodide({
+  ..., stdin: stdin_func, stdout: stdout_func, stderr: stderr_func
+});
+```
+
+then every time a line is written to `stdout` (resp. `stderr`), `stdout_func`
+(resp `stderr_func`) will be called on the line. Everytime `stdin` is read,
+`stdin_func` will be called with zero arguments. It is expected to return a
+string which is interpreted as a line of text.
+
+Temporary redirection works much the same as it does in native Python: you can
+overwrite `sys.stdin`, `sys.stdout`, and `sys.stderr` respectively. If you want
+to do it temporarily, it's recommended to use
 [`contextlib.redirect_stdout`](https://docs.python.org/3/library/contextlib.html#contextlib.redirect_stdout)
 and
 [`contextlib.redirect_stderr`](https://docs.python.org/3/library/contextlib.html#contextlib.redirect_stderr).
-There is no `contextlib.redirect_stdin` but it is easy to make your own as follows:
+There is no `contextlib.redirect_stdin` but it is easy to make your own as
+follows:
 
 ```py
 from contextlib import _RedirectStream

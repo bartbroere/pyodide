@@ -6,19 +6,19 @@ browser or a backend JavaScript environment.
 ## Web browsers
 
 To use Pyodide on a web page you need to load `pyodide.js` and initialize
-Pyodide with {any}`loadPyodide` specifying a index URL for packages:
+Pyodide with {any}`loadPyodide <globalThis.loadPyodide>` specifying an index URL for packages:
 
 ```html-pyodide
 <!DOCTYPE html>
 <html>
   <head>
-      <script src="https://cdn.jsdelivr.net/pyodide/v0.18.1/full/pyodide.js"></script>
+      <script src="https://cdn.jsdelivr.net/pyodide/v0.19.0/full/pyodide.js"></script>
   </head>
   <body>
     <script type="text/javascript">
       async function main(){
         let pyodide = await loadPyodide({
-          indexURL : "https://cdn.jsdelivr.net/pyodide/v0.18.1/full/"
+          indexURL : "https://cdn.jsdelivr.net/pyodide/v0.19.0/full/"
         });
         console.log(pyodide.runPython("1 + 2"));
       }
@@ -39,13 +39,40 @@ application.
 ```{note}
 To avoid confusion, note that:
  - `cdn.jsdelivr.net/pyodide/` distributes Python packages built with Pyodide as well as `pyodide.js`
- - `cdn.jsdelivr.net/npm/pyodide@0.18.1/` is a mirror of the Pyodide NPM package, which includes none of the WASM files
+ - `cdn.jsdelivr.net/npm/pyodide@0.18.0/` is a mirror of the Pyodide NPM package, which includes none of the WASM files
 ```
+
+### Supported browsers
+
+Pyodide works in any modern web browser with WebAssembly support.
+
+**Tier 1** browsers are tested as part of the test suite with continuous integration,
+
+| Browser | Minimal supported version | Release date    |
+| ------- | ------------------------- | --------------- |
+| Firefox | 70.0                      | 22 October 2019 |
+| Chrome  | 71.0                      | 4 December 2018 |
+
+```{note}
+Latest browser versions generally provide more reliable WebAssembly support
+and will run Pyodide faster, so their use is recommended.
+```
+
+**Tier 2** browsers are known to work, but they are not systematically tested in
+Pyodide,
+
+| Browser | Minimal supported version | Release date      |
+| ------- | ------------------------- | ----------------- |
+| Safari  | 13.1                      | 19 September 2019 |
+| Edge    | 80                        | 26 Feb 2020       |
+
+Other browsers with WebAssembly support might also work however they are not
+officially supported.
 
 ## Web Workers
 
-By default, WebAssembly runs in the main browser thread, and it can make UI non
-responsive for long running computations.
+By default, WebAssembly runs in the main browser thread, and it can make UI
+non-responsive for long-running computations.
 
 To avoid this situation, one solution is to run {ref}`Pyodide in a WebWorker <using_from_webworker>`.
 
@@ -59,7 +86,7 @@ Install the [Pyodide npm package](https://www.npmjs.com/package/pyodide),
 npm install pyodide
 ```
 
-Download and extract Pyodide packages from [Github
+Download and extract Pyodide packages from [GitHub
 releases](https://github.com/pyodide/pyodide/releases)
 (**pyodide-build-\*.tar.bz2** file). The version of the release needs to match
 exactly the version of this package.
@@ -81,7 +108,7 @@ To start Node.js REPL with support for top level await, use `node --experimental
 ```
 
 ```{warning}
-Download of packages from PyPi is currently not cached when run in
+Download of packages from PyPI is currently not cached when run in
 Node.js. Packages will be re-downloaded each time `micropip.install` is run.
 
 For this same reason, installing Pyodide packages from the CDN is explicitly not supported for now.
@@ -92,4 +119,5 @@ For this same reason, installing Pyodide packages from the CDN is explicitly not
    :hidden:
 
    webworker.md
+   loading-custom-python-code.md
 ```

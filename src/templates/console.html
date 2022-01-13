@@ -36,8 +36,12 @@
             import __main__
             BANNER = "Welcome to the Pyodide terminal emulator 🐍\\n" + BANNER
             pyconsole = PyodideConsole(__main__.__dict__)
+            import builtins
             async def await_fut(fut):
-              return to_js([await fut], depth=1)
+              res = await fut
+              if res is not None:
+                builtins._ = res
+              return to_js([res], depth=1)
             def clear_console():
               pyconsole.buffer = []
         `,
@@ -79,7 +83,7 @@
               default:
                 throw new Error(`Unexpected type ${ty}`);
             }
-            // In Javascript, await automatically also awaits any results of
+            // In JavaScript, await automatically also awaits any results of
             // awaits, so if an async function returns a future, it will await
             // the inner future too. This is not what we want so we
             // temporarily put it into a list to protect it.
@@ -99,7 +103,8 @@
               }
             } catch (e) {
               if (e.constructor.name === "PythonError") {
-                term.error(fut.formatted_error.trimEnd());
+                const message = fut.formatted_error || e.message;
+                term.error(message.trimEnd());
               } else {
                 throw e;
               }
