@@ -65,14 +65,15 @@ jobs:
           make -C cpython
           ccache -s
 
-      - name: build Pyodide core + numpy
+      - name: build Pyodide
         shell: bash -l {0}
         run: |
           # This is necessary to use the ccache from emsdk
           source pyodide_env.sh
           ccache -z
-          PYODIDE_PACKAGES="core,numpy" make
+          PYODIDE_PACKAGES="*" make
           ccache -s
+          tar czvf pyodide.tar.gz build/*
 
       - name: check-size
         run: ls -lh build/
@@ -83,6 +84,13 @@ jobs:
           name: core-build
           path: ./build/
           retention-days: 60
+
+      - name: Store gzipped pyodide
+          uses: actions/upload-artifact@v2
+          with:
+            name: pyodide.tar.gz
+            path: ./pyodide.tar.gz
+            retention-days: 60
 
   test-core:
     runs-on: ubuntu-latest
