@@ -12,6 +12,40 @@ substitutions:
 
 # Change Log
 
+## Unreleased
+
+### Packages
+
+- New packages: sqlalchemy {pr}`2112` pydantic {pr}`2117`
+
+- Upgraded packages: distlib (0.3.4)
+
+### Uncategorized
+
+- {{ Update }} Upgraded pyb2d to 0.7.2.
+  {pr}`2117`
+
+- {{Fix}} A fatal error in `scipy.stats.binom.ppf` has been fixed.
+  {pr}`2109`
+
+- {{Fix}} Type signature mismatches in some numpy comparators have been fixed.
+  {pr}`2110`
+
+- {{Enhancement}} Pyodide now uses Python wheel files to distribute packages
+  rather than the emscripten `file_packager.py` format.
+  {pr}`2027`
+
+- {{Fix}} The "PyProxy has already been destroyed" error message has been
+  improved with some context information.
+  {pr}`2121`
+
+- {{Fix}} Python tracebacks now include Javascript frames when Python calls a
+  Javascript function.
+  {pr}`2123`
+
+- {{Enhancement}} The Javascript package was migrated to Typescript.
+  {pr}`2130` and {pr}`2133`
+
 ## Version 0.19.0
 
 _January 10, 2021_
