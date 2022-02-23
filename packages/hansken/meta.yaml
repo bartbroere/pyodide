@@ -1,10 +1,10 @@
 package:
   name: hansken
-  version: 2022.1.13
+  version: 2022.1.21
 
 source:
-  url: https://files.pythonhosted.org/packages/8c/37/ff972c4bb6fd5bb3e275238153f4bce7b0c6be15c1479f1d44730f944a36/hansken-2022.1.13.tar.gz
-  sha256: 408e7852da8bb63fd7c3275d5bb8b55447ad68d2509f80a4b9c1c6f4968f5eee
+  url: https://files.pythonhosted.org/packages/df/fb/b2de05f0501dca1132c5947f2e5ec6e364ee3fba0a8f9195e9c8a0383e5d/hansken-2022.1.21.tar.gz
+  sha256: e931ba119b484df990d0b0bca8a98b1e9a33a255fed617953c043f92cc4dca4d
 
 requirements:
  run:
