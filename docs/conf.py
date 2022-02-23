@@ -106,29 +106,8 @@ htmlhelp_basename = "Pyodidedoc"
 # A list of files that should not be packed into the epub file.
 epub_exclude_files = ["search.html"]
 
-
-def delete_attrs(cls):
-    for name in dir(cls):
-        if not name.startswith("_"):
-            try:
-                delattr(cls, name)
-            except:
-                pass
-
-
-# Try not to cause side effects if we are imported incidentally.
-
-try:
-    import sphinx
-
-    IN_SPHINX = hasattr(sphinx, "application")
-except ImportError:
-    IN_SPHINX = False
-
-IN_READTHEDOCS = "READTHEDOCS" in os.environ
-
-if IN_READTHEDOCS:
-    env = {"PYODIDE_BASE_URL": "https://cdn.jsdelivr.net/pyodide/dev/full/"}
+if "READTHEDOCS" in os.environ:
+    env = {"PYODIDE_BASE_URL": "https://cdn.jsdelivr.net/pyodide/v0.19.1/full/"}
     os.makedirs("_build/html", exist_ok=True)
     res = subprocess.check_output(
         ["make", "-C", "..", "docs/_build/html/console.html"],
