@@ -1,0 +1,15 @@
+package:
+  name: lir
+  version: 0.1.4
+
+source:
+  url: https://files.pythonhosted.org/packages/71/34/a9a8ae86c9a8c523f46b4bad431239da2dbf947a305a838d50ff148ada27/lir-0.1.4.tar.gz
+  sha256: b4638405bfc9d31567c03a0b6e4d76967bd19ffdd0d547131596767f4ee7aeee
+
+requirements:
+ run:
+   - matplotlib
+   - numpy
+   - scipy
+   - scikit-learn
+#  - tqdm
