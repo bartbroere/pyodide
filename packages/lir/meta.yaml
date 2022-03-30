@@ -3,8 +3,8 @@ package:
   version: 0.1.5
 
 source:
-  url: https://files.pythonhosted.org/packages/17/cf/06bfc9f91f4315c1ee59efb5b8276c58fad3ca3cf2a277f5bb806582b93a/lir-0.1.5.tar.gz
-  sha256: db7fcbbaaa2db6b1e1718e45a0d5f3d92b63cf4388a6219b223ba878b43983de
+  url: https://files.pythonhosted.org/packages/ee/63/48f17eab37610a0005337c1432b9316c1c1add3da7b5e9cb4547021116f8/lir-0.1.10.tar.gz
+  sha256: 45be369c4e3eceddf831e2b32e581cb88e8f71ed561a45cbf4ceaa63cff05ba5
 
 requirements:
  run:
