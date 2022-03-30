@@ -1,0 +1,7 @@
+{
+  "name": "pyodidebuild",
+  "version": "0.17.1",
+  "directories":{
+      "pyodidebuild": "/"
+  }
+}
