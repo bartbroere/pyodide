@@ -1,16 +1,14 @@
-# -*- coding: utf-8 -*-
 # Configuration file for the Sphinx documentation builder.
 
 # -- Path setup --------------------------------------------------------------
 
 import atexit
 import os
-import sys
 import shutil
 import subprocess
-
+import sys
 from pathlib import Path
-from typing import Dict, Any
+from typing import Any
 
 # -- Project information -----------------------------------------------------
 
@@ -84,7 +82,7 @@ html_theme = "sphinx_book_theme"
 html_logo = "_static/img/pyodide-logo.png"
 
 # theme-specific options
-html_theme_options: Dict[str, Any] = {}
+html_theme_options: dict[str, Any] = {}
 
 # paths that contain custom static files (such as style sheets)
 html_static_path = ["_static"]
@@ -106,8 +104,29 @@ htmlhelp_basename = "Pyodidedoc"
 # A list of files that should not be packed into the epub file.
 epub_exclude_files = ["search.html"]
 
-if "READTHEDOCS" in os.environ:
-    env = {"PYODIDE_BASE_URL": "https://cdn.jsdelivr.net/pyodide/v0.19.1/full/"}
+
+def delete_attrs(cls):
+    for name in dir(cls):
+        if not name.startswith("_"):
+            try:
+                delattr(cls, name)
+            except Exception:
+                pass
+
+
+# Try not to cause side effects if we are imported incidentally.
+
+try:
+    import sphinx
+
+    IN_SPHINX = hasattr(sphinx, "application")
+except ImportError:
+    IN_SPHINX = False
+
+IN_READTHEDOCS = "READTHEDOCS" in os.environ
+
+if IN_READTHEDOCS:
+    env = {"PYODIDE_BASE_URL": "https://cdn.jsdelivr.net/pyodide/dev/full/"}
     os.makedirs("_build/html", exist_ok=True)
     res = subprocess.check_output(
         ["make", "-C", "..", "docs/_build/html/console.html"],
@@ -118,6 +137,13 @@ if "READTHEDOCS" in os.environ:
     print(res)
 
 if IN_SPHINX:
+    # Compatibility shims. sphinx-js and sphinxcontrib-napoleon have not been updated for Python 3.10
+    import collections
+    from typing import Callable, Mapping
+
+    collections.Mapping = Mapping  # type: ignore[attr-defined]
+    collections.Callable = Callable  # type: ignore[attr-defined]
+
     base_dir = Path(__file__).resolve().parent.parent
     path_dirs = [
         str(base_dir),
@@ -128,7 +154,7 @@ if IN_SPHINX:
     ]
     sys.path = path_dirs + sys.path
 
-    import micropip  # noqa
+    import micropip  # noqa: F401
     import pyodide
 
     # We hacked it so that autodoc will look for submodules, but only if we import

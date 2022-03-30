@@ -1,6 +1,7 @@
 # See also test_typeconversions, and test_python.
-import pytest
 import time
+
+import pytest
 
 
 def test_pyproxy_class(selenium):
@@ -30,42 +31,37 @@ def test_pyproxy_class(selenium):
         f.destroy();
         """
     )
-    assert (
-        set(
-            [
-                "__class__",
-                "__delattr__",
-                "__dict__",
-                "__dir__",
-                "__doc__",
-                "__eq__",
-                "__format__",
-                "__ge__",
-                "__getattribute__",
-                "__gt__",
-                "__hash__",
-                "__init__",
-                "__init_subclass__",
-                "__le__",
-                "__lt__",
-                "__module__",
-                "__ne__",
-                "__new__",
-                "__reduce__",
-                "__reduce_ex__",
-                "__repr__",
-                "__setattr__",
-                "__sizeof__",
-                "__str__",
-                "__subclasshook__",
-                "__weakref__",
-                "bar",
-                "baz",
-                "get_value",
-            ]
-        ).difference(selenium.run_js("return f_props"))
-        == set()
-    )
+    assert {
+        "__class__",
+        "__delattr__",
+        "__dict__",
+        "__dir__",
+        "__doc__",
+        "__eq__",
+        "__format__",
+        "__ge__",
+        "__getattribute__",
+        "__gt__",
+        "__hash__",
+        "__init__",
+        "__init_subclass__",
+        "__le__",
+        "__lt__",
+        "__module__",
+        "__ne__",
+        "__new__",
+        "__reduce__",
+        "__reduce_ex__",
+        "__repr__",
+        "__setattr__",
+        "__sizeof__",
+        "__str__",
+        "__subclasshook__",
+        "__weakref__",
+        "bar",
+        "baz",
+        "get_value",
+    }.difference(selenium.run_js("return f_props")) == set()
 
 
 def test_del_builtin(selenium):
@@ -205,7 +201,7 @@ def test_pyproxy_iter(selenium):
         """
     )
     assert ty == "ChainMap"
-    assert set(l) == set(["a", "b"])
+    assert set(l) == {"a", "b"}
 
     [result, result2] = selenium.run_js(
         """
@@ -791,7 +787,7 @@ def test_fatal_error(selenium_standalone):
                     // pass
                 } finally {
                     if(!fatal_error){
-                        throw new Error(`No fatal error occured: ${func.toString().slice(6)}`);
+                        throw new Error(`No fatal error occurred: ${func.toString().slice(6)}`);
                     }
                 }
             }
@@ -830,6 +826,10 @@ def test_fatal_error(selenium_standalone):
             expect_fatal(() => t.toString());
             expect_fatal(() => Array.from(t));
             t.destroy();
+            /*
+            // FIXME: Test `memory access out of bounds` error.
+            //        Testing this causes trouble on Chrome 97.0.4692.99 / ChromeDriver 97.0.4692.71.
+            //        (See: https://github.com/pyodide/pyodide/pull/2152)
             a = pyodide.runPython(`
                 from array import array
                 array("I", [1,2,3,4])
@@ -837,6 +837,7 @@ def test_fatal_error(selenium_standalone):
             b = a.getBuffer();
             b._view_ptr = 1e10;
             expect_fatal(() => b.release());
+            */
         } finally {
             pyodide._api.fatal_error = old_fatal_error;
         }
@@ -910,5 +911,24 @@ def test_pyproxy_borrow(selenium):
         assert(() => Tcopy.f() === 7);
         assertThrows(() => T.f(), "Error", "automatically destroyed in the process of destroying the proxy it was borrowed from");
         Tcopy.destroy();
+        """
+    )
+
+
+def test_coroutine_scheduling(selenium):
+    selenium.run_js(
+        """
+        let f = pyodide.runPython(`
+            x = 0
+            async def f():
+                global x
+                print('hi!')
+                x += 1
+            f
+        `);
+        setTimeout(f, 100);
+        await sleep(200);
+        assert(() => pyodide.globals.get('x') === 1);
+        f.destroy();
         """
     )

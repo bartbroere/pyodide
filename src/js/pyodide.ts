@@ -1,13 +1,14 @@
 /**
  * The main bootstrap code for loading pyodide.
  */
+import ErrorStackParser from "error-stack-parser";
 import { Module, setStandardStreams, setHomeDirectory, API } from "./module.js";
 import { loadScript, _loadBinaryFile, initNodeModules } from "./compat.js";
 import { initializePackageIndex, loadPackage } from "./load-package.js";
 import { makePublicAPI, PyodideInterface } from "./api.js";
 import "./error_handling.gen.js";
 
-import { PyProxy, PyProxyDict, Py2JsResult } from "./pyproxy.gen";
+import { PyProxy, PyProxyDict } from "./pyproxy.gen";
 
 export {
   PyProxy,
@@ -21,83 +22,11 @@ export {
   PyProxyAwaitable,
   PyProxyBuffer,
   PyProxyCallable,
-  Py2JsResult,
   TypedArray,
   PyBuffer,
 } from "./pyproxy.gen";
 
-/**
- * Dump the Python traceback to the browser console.
- *
- * @private
- */
-API.dump_traceback = function () {
-  const fd_stdout = 1;
-  Module.__Py_DumpTraceback(fd_stdout, Module._PyGILState_GetThisThreadState());
-};
-
-let fatal_error_occurred = false;
-/**
- * Signal a fatal error.
- *
- * Dumps the Python traceback, shows a JavaScript traceback, and prints a clear
- * message indicating a fatal error. It then dummies out the public API so that
- * further attempts to use Pyodide will clearly indicate that Pyodide has failed
- * and can no longer be used. pyodide._module is left accessible, and it is
- * possible to continue using Pyodide for debugging purposes if desired.
- *
- * @argument e {Error} The cause of the fatal error.
- * @private
- */
-API.fatal_error = function (e: any) {
-  if (e.pyodide_fatal_error) {
-    return;
-  }
-  if (fatal_error_occurred) {
-    console.error("Recursive call to fatal_error. Inner error was:");
-    console.error(e);
-    return;
-  }
-  // Mark e so we know not to handle it later in EM_JS wrappers
-  e.pyodide_fatal_error = true;
-  fatal_error_occurred = true;
-  console.error(
-    "Pyodide has suffered a fatal error. Please report this to the Pyodide maintainers."
-  );
-  console.error("The cause of the fatal error was:");
-  if (API.inTestHoist) {
-    // Test hoist won't print the error object in a useful way so convert it to
-    // string.
-    console.error(e.toString());
-    console.error(e.stack);
-  } else {
-    console.error(e);
-  }
-  try {
-    API.dump_traceback();
-    for (let key of Object.keys(API.public_api)) {
-      if (key.startsWith("_") || key === "version") {
-        continue;
-      }
-      Object.defineProperty(API.public_api, key, {
-        enumerable: true,
-        configurable: true,
-        get: () => {
-          throw new Error(
-            "Pyodide already fatally failed and can no longer be used."
-          );
-        },
-      });
-    }
-    if (API.on_fatal) {
-      API.on_fatal(e);
-    }
-  } catch (err2) {
-    console.error("Another error occurred while handling the fatal error:");
-    console.error(err2);
-  }
-  throw e;
-};
+export type Py2JsResult = any;
 
 let runPythonInternal_dict: PyProxy; // Initialized in finalizeBootstrap
 /**
@@ -105,7 +34,7 @@ let runPythonInternal_dict: PyProxy; // Initialized in finalizeBootstrap
  * `eval_code` from `_pyodide` so that it can work before `pyodide` is imported.
  * @private
  */
-API.runPythonInternal = function (code: string): Py2JsResult {
+API.runPythonInternal = function (code: string): any {
   return API._pyodide._base.eval_code(code, runPythonInternal_dict);
 };
 
@@ -152,8 +81,10 @@ function unpackPyodidePy(pyodide_py_tar: Uint8Array) {
   );
   Module.FS.close(stream);
   const code_ptr = Module.stringToNewUTF8(`
+from sys import version_info
+pyversion = f"python{version_info.major}.{version_info.minor}"
 import shutil
-shutil.unpack_archive("/pyodide_py.tar", "/lib/python3.9/site-packages/")
+shutil.unpack_archive("/pyodide_py.tar", f"/lib/{pyversion}/site-packages/")
 del shutil
 import importlib
 importlib.invalidate_caches()
@@ -220,12 +151,41 @@ function finalizeBootstrap(config: ConfigType) {
 declare function _createPyodideModule(Module: any): Promise<void>;
 
 /**
+ *  If indexURL isn't provided, throw an error and catch it and then parse our
+ *  file name out from the stack trace.
+ *
+ *  Question: But getting the URL from error stack trace is well... really
+ *  hacky. Can't we use
+ *  [`document.currentScript`](https://developer.mozilla.org/en-US/docs/Web/API/Document/currentScript)
+ *  or
+ *  [`import.meta.url`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/import.meta)
+ *  instead?
+ *
+ *  Answer: `document.currentScript` works for the browser main thread.
+ *  `import.meta` works for es6 modules. In a classic webworker, I think there
+ *  is no approach that works. Also we would need some third approach for node
+ *  when loading a commonjs module using `require`. On the other hand, this
+ *  stack trace approach works for every case without any feature detection
+ *  code.
+ */
+function calculateIndexURL(): string {
+  let err;
+  try {
+    throw new Error();
+  } catch (e) {
+    err = e;
+  }
+  const fileName = ErrorStackParser.parse(err)[0].fileName!;
+  return fileName.slice(0, fileName.lastIndexOf("/"));
+}
+
+/**
  * See documentation for loadPyodide.
  * @private
  */
 type ConfigType = {
   indexURL: string;
-  homedir?: string;
+  homedir: string;
   fullStdLib?: boolean;
   stdin?: () => string;
   stdout?: (msg: string) => void;
@@ -246,43 +206,49 @@ type ConfigType = {
  * @memberof globalThis
  * @async
  */
-export async function loadPyodide(config: {
-  /**
-   * The URL from which Pyodide will load packages
-   */
-  indexURL: string;
+export async function loadPyodide(
+  options: {
+    /**
+     * The URL from which Pyodide will load the main Pyodide runtime and
+     * packages. Defaults to the url that pyodide is loaded from with the file
+     * name (pyodide.js or pyodide.mjs) removed. It is recommended that you
+     * leave this undefined, providing an incorrect value can cause broken
+     * behavior.
+     */
+    indexURL?: string;
 
-  /**
-   * The home directory which Pyodide will use inside virtual file system. Default: "/home/pyodide"
-   */
-  homedir?: string;
+    /**
+     * The home directory which Pyodide will use inside virtual file system. Default: "/home/pyodide"
+     */
+    homedir?: string;
 
-  /** Load the full Python standard library.
-   * Setting this to false excludes following modules: distutils.
-   * Default: true
-   */
-  fullStdLib?: boolean;
-  /**
-   * Override the standard input callback. Should ask the user for one line of input.
-   */
-  stdin?: () => string;
-  /**
-   * Override the standard output callback.
-   * Default: undefined
-   */
-  stdout?: (msg: string) => void;
-  /**
-   * Override the standard error output callback.
-   * Default: undefined
-   */
-  stderr?: (msg: string) => void;
-  jsglobals?: object;
-}): Promise<PyodideInterface> {
+    /** Load the full Python standard library.
+     * Setting this to false excludes following modules: distutils.
+     * Default: true
+     */
+    fullStdLib?: boolean;
+    /**
+     * Override the standard input callback. Should ask the user for one line of input.
+     */
+    stdin?: () => string;
+    /**
+     * Override the standard output callback.
+     * Default: undefined
+     */
+    stdout?: (msg: string) => void;
+    /**
+     * Override the standard error output callback.
+     * Default: undefined
+     */
+    stderr?: (msg: string) => void;
+    jsglobals?: object;
+  } = {}
+): Promise<PyodideInterface> {
   if ((loadPyodide as any).inProgress) {
     throw new Error("Pyodide is already loading.");
   }
-  if (!config.indexURL) {
-    throw new Error("Please provide indexURL parameter to loadPyodide");
+  if (!options.indexURL) {
+    options.indexURL = calculateIndexURL();
   }
   (loadPyodide as any).inProgress = true;
 
@@ -292,7 +258,7 @@ export async function loadPyodide(config: {
     stdin: globalThis.prompt ? globalThis.prompt : undefined,
     homedir: "/home/pyodide",
   };
-  config = Object.assign(default_config, config);
+  let config = Object.assign(default_config, options) as ConfigType;
   if (!config.indexURL.endsWith("/")) {
     config.indexURL += "/";
   }
@@ -322,7 +288,7 @@ export async function loadPyodide(config: {
   // being called.
   await moduleLoaded;
 
-  // Disable futher loading of Emscripten file_packager stuff.
+  // Disable further loading of Emscripten file_packager stuff.
   Module.locateFile = (path: string) => {
     throw new Error("Didn't expect to load any more file_packager files!");
   };
@@ -341,4 +307,3 @@ export async function loadPyodide(config: {
   pyodide.runPython("print('Python initialization complete')");
   return pyodide;
 }
-(globalThis as any).loadPyodide = loadPyodide;

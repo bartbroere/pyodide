@@ -1,5 +1,194 @@
 import ErrorStackParser from "error-stack-parser";
-import { Module, API } from "./module.js";
+import { Module, API, Hiwire, Tests } from "./module.js";
+
+/**
+ * Dump the Python traceback to the browser console.
+ *
+ * @private
+ */
+API.dump_traceback = function () {
+  const fd_stdout = 1;
+  Module.__Py_DumpTraceback(fd_stdout, Module._PyGILState_GetThisThreadState());
+};
+
+function ensureCaughtObjectIsError(e: any) {
+  if (typeof e === "string") {
+    // Sometimes emscripten throws a raw string...
+    e = new Error(e);
+  } else if (
+    typeof e !== "object" ||
+    e === null ||
+    typeof e.stack !== "string" ||
+    typeof e.message !== "string"
+  ) {
+    // We caught something really weird. Be brave!
+    let msg = `A value of type ${typeof e} with tag ${Object.prototype.toString.call(
+      e
+    )} was thrown as an error!`;
+    try {
+      msg += `\nString interpolation of the thrown value gives """${e}""".`;
+    } catch (e) {
+      msg += `\nString interpolation of the thrown value fails.`;
+    }
+    try {
+      msg += `\nThe thrown value's toString method returns """${e.toString()}""".`;
+    } catch (e) {
+      msg += `\nThe thrown value's toString method fails.`;
+    }
+    e = new Error(msg);
+  }
+  // Post conditions:
+  // 1. typeof e is object
+  // 2. hiwire_is_error(e) returns true
+  return e;
+}
+
+let fatal_error_occurred = false;
+/**
+ * Signal a fatal error.
+ *
+ * Dumps the Python traceback, shows a JavaScript traceback, and prints a clear
+ * message indicating a fatal error. It then dummies out the public API so that
+ * further attempts to use Pyodide will clearly indicate that Pyodide has failed
+ * and can no longer be used. pyodide._module is left accessible, and it is
+ * possible to continue using Pyodide for debugging purposes if desired.
+ *
+ * @argument e {Error} The cause of the fatal error.
+ * @private
+ */
+API.fatal_error = function (e: any) {
+  if (e && e.pyodide_fatal_error) {
+    return;
+  }
+  if (fatal_error_occurred) {
+    console.error("Recursive call to fatal_error. Inner error was:");
+    console.error(e);
+    return;
+  }
+  if (typeof e === "number") {
+    // Hopefully a C++ exception? Have to do some conversion work.
+    e = convertCppException(e);
+  } else {
+    e = ensureCaughtObjectIsError(e);
+  }
+  // Mark e so we know not to handle it later in EM_JS wrappers
+  e.pyodide_fatal_error = true;
+  fatal_error_occurred = true;
+  console.error(
+    "Pyodide has suffered a fatal error. Please report this to the Pyodide maintainers."
+  );
+  console.error("The cause of the fatal error was:");
+  if (API.inTestHoist) {
+    // Test hoist won't print the error object in a useful way so convert it to
+    // string.
+    console.error(e.toString());
+    console.error(e.stack);
+  } else {
+    console.error(e);
+  }
+  try {
+    API.dump_traceback();
+    for (let key of Object.keys(API.public_api)) {
+      if (key.startsWith("_") || key === "version") {
+        continue;
+      }
+      Object.defineProperty(API.public_api, key, {
+        enumerable: true,
+        configurable: true,
+        get: () => {
+          throw new Error(
+            "Pyodide already fatally failed and can no longer be used."
+          );
+        },
+      });
+    }
+    if (API.on_fatal) {
+      API.on_fatal(e);
+    }
+  } catch (err2) {
+    console.error("Another error occurred while handling the fatal error:");
+    console.error(err2);
+  }
+  throw e;
+};
+
+class CppException extends Error {
+  ty: string;
+  constructor(ty: string, msg: string) {
+    super(msg);
+    this.ty = ty;
+  }
+}
+Object.defineProperty(CppException.prototype, "name", {
+  get() {
+    return `${this.constructor.name} ${this.ty}`;
+  },
+});
+
+/**
+ *
+ * Return the type name, whether the pointer inherits from exception, and the
+ * vtable pointer for the type.
+ *
+ * This code is based on imitating:
+ * 1. the implementation of __cxa_find_matching_catch
+ * 2. the disassembly from:
+ * ```C++
+ * try {
+ *    ...
+ * } catch(exception e){
+ *    ...
+ * }
+ *
+ * @param ptr
+ * @returns
+ * exc_type_name : the type name of the exception, as would be reported by
+ * `typeid(type).name()` but also demangled.
+ *
+ * is_exception_subclass : true if the object is a subclass of exception. In
+ * this case we will use `exc.what()` to get an error message.
+ *
+ * adjusted_ptr : The adjusted vtable pointer for the exception to use to invoke
+ * exc.what().
+ *
+ * @private
+ */
+function cppExceptionInfo(ptr: number): [string, boolean, number] {
+  const base_exception_type = Module._exc_type();
+  const ei = new Module.ExceptionInfo(ptr);
+  const caught_exception_type = ei.get_type();
+  const stackTop = Module.stackSave();
+  const exceptionThrowBuf = Module.stackAlloc(4);
+  Module.HEAP32[exceptionThrowBuf / 4] = ptr;
+  const exc_type_name = Module.demangle(
+    Module.UTF8ToString(Module._exc_typename(caught_exception_type))
+  );
+  const is_exception_subclass = !!Module.___cxa_can_catch(
+    base_exception_type,
+    caught_exception_type,
+    exceptionThrowBuf
+  );
+  const adjusted_ptr = Module.HEAP32[exceptionThrowBuf / 4];
+  Module.stackRestore(stackTop);
+  return [exc_type_name, is_exception_subclass, adjusted_ptr];
+}
+
+function convertCppException(ptr: number): CppException {
+  const [exc_type_name, is_exception_subclass, adjusted_ptr] =
+    cppExceptionInfo(ptr);
+  let msg;
+  if (is_exception_subclass) {
+    // If the ptr inherits from exception, we can use exception.what() to
+    // generate a message
+    const msgPtr = Module._exc_what(adjusted_ptr);
+    msg = Module.UTF8ToString(msgPtr);
+  } else {
+    msg = `The exception is an object of type ${exc_type_name} at address ${ptr} which does not inherit from std::exception`;
+  }
+  return new CppException(exc_type_name, msg);
+}
+// Expose for testing
+Tests.convertCppException = convertCppException;
 
 function isPyodideFrame(frame: ErrorStackParser.StackFrame): boolean {
   const fileName = frame.fileName || "";
@@ -32,7 +221,7 @@ function isErrorStart(frame: ErrorStackParser.StackFrame): boolean {
 }
 
 Module.handle_js_error = function (e: any) {
-  if (e.pyodide_fatal_error) {
+  if (e && e.pyodide_fatal_error) {
     throw e;
   }
   if (e instanceof Module._PropagatePythonError) {
@@ -46,15 +235,28 @@ Module.handle_js_error = function (e: any) {
     // Try to restore the original Python exception.
     restored_error = Module._restore_sys_last_exception(e.__error_address);
   }
+  let stack: any;
+  let weirdCatch;
+  try {
+    stack = ErrorStackParser.parse(e);
+  } catch (_) {
+    weirdCatch = true;
+  }
+  if (weirdCatch) {
+    e = ensureCaughtObjectIsError(e);
+  }
   if (!restored_error) {
     // Wrap the JavaScript error
-    let eidx = Module.hiwire.new_value(e);
+    let eidx = Hiwire.new_value(e);
     let err = Module._JsProxy_create(eidx);
     Module._set_error(err);
     Module._Py_DecRef(err);
-    Module.hiwire.decref(eidx);
+    Hiwire.decref(eidx);
   }
-  let stack = ErrorStackParser.parse(e);
+  if (weirdCatch) {
+    // In this case we have no stack frames so we can quit
+    return;
+  }
   if (isErrorStart(stack[0])) {
     while (isPyodideFrame(stack[0])) {
       stack.shift();
@@ -93,10 +295,6 @@ Module.handle_js_error = function (e: any) {
  *    easiest way is to only handle the exception in Python.
  */
 export class PythonError extends Error {
-  /**
-   * The Python traceback.
-   */
-  message: string;
   /**  The address of the error we are wrapping. We may later compare this
    * against sys.last_value.
    * WARNING: we don't own a reference to this pointer, dereferencing it
@@ -110,10 +308,12 @@ export class PythonError extends Error {
     Error.stackTraceLimit = Infinity;
     super(message);
     Error.stackTraceLimit = oldLimit;
-    this.name = this.constructor.name;
     this.__error_address = error_address;
   }
 }
+Object.defineProperty(PythonError.prototype, "name", {
+  value: PythonError.name,
+});
 API.PythonError = PythonError;
 // A special marker. If we call a CPython API from an EM_JS function and the
 // CPython API sets an error, we might want to return an error status back to
@@ -129,4 +329,7 @@ class _PropagatePythonError extends Error {
     );
   }
 }
+Object.defineProperty(_PropagatePythonError.prototype, "name", {
+  value: _PropagatePythonError.name,
+});
 Module._PropagatePythonError = _PropagatePythonError;

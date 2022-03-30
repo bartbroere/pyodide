@@ -1,12 +1,11 @@
 from collections import UserDict
-from dataclasses import dataclass, field, astuple
-from pathlib import Path
-from typing import List, Dict, Iterable
+from dataclasses import astuple, dataclass
+from typing import Iterable
 
 __all__ = ["PackageDict"]
 
 
-def _format_table(headers: List[str], table: List[Iterable]) -> str:
+def _format_table(headers: list[str], table: list[Iterable]) -> str:
     """
     Returns a minimal formatted table
 

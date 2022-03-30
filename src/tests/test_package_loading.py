@@ -1,7 +1,17 @@
-import pytest
 import shutil
-
 from pathlib import Path
+
+import pytest
+
+from conftest import BUILD_PATH
+
+
+def get_pyparsing_wheel_name():
+    return list(BUILD_PATH.glob("pyparsing*.whl"))[0].name
+
+
+def get_pytz_wheel_name():
+    return list(BUILD_PATH.glob("pytz*.whl"))[0].name
 
 
 @pytest.mark.parametrize("active_server", ["main", "secondary"])
@@ -26,12 +36,13 @@ def test_load_from_url(selenium_standalone, web_server_secondary, active_server)
         fh_main.seek(0, 2)
         fh_backup.seek(0, 2)
 
-        selenium.load_package(f"http://{url}:{port}/pyparsing-3.0.6-py3-none-any.whl")
+        pyparsing_wheel_name = get_pyparsing_wheel_name()
+        selenium.load_package(f"http://{url}:{port}/{pyparsing_wheel_name}")
         assert "Skipping unknown package" not in selenium.logs
 
         # check that all resources were loaded from the active server
         txt = fh_main.read()
-        assert '"GET /pyparsing-3.0.6-py3-none-any.whl HTTP/1.1" 200' in txt
+        assert f'"GET /{pyparsing_wheel_name} HTTP/1.1" 200' in txt
 
         # no additional resources were loaded from the other server
         assert len(fh_backup.read()) == 0
@@ -43,12 +54,14 @@ def test_load_from_url(selenium_standalone, web_server_secondary, active_server)
         """
     )
 
-    selenium.load_package(f"http://{url}:{port}/pytz-2021.3-py3-none-any.whl")
+    pytz_wheel_name = get_pytz_wheel_name()
+    selenium.load_package(f"http://{url}:{port}/{pytz_wheel_name}")
     selenium.run("import pytz")
 
 
 def test_load_relative_url(selenium_standalone):
-    selenium_standalone.load_package("./pytz-2021.3-py3-none-any.whl")
+    print(get_pytz_wheel_name())
+    selenium_standalone.load_package(f"./{get_pytz_wheel_name()}")
     selenium_standalone.run("import pytz")
 
 
@@ -108,8 +121,8 @@ def test_load_packages_multiple(selenium_standalone, packages):
 )
 def test_load_packages_sequential(selenium_standalone, packages):
     selenium = selenium_standalone
-    promises = ",".join('pyodide.loadPackage("{}")'.format(x) for x in packages)
-    selenium.run_js("return Promise.all([{}])".format(promises))
+    promises = ",".join(f'pyodide.loadPackage("{x}")' for x in packages)
+    selenium.run_js(f"return Promise.all([{promises}])")
     selenium.run(f"import {packages[0]}")
     selenium.run(f"import {packages[1]}")
     # The log must show that each package is loaded exactly once,
@@ -146,17 +159,15 @@ def test_load_failure_retry(selenium_standalone):
 
 
 def test_load_package_unknown(selenium_standalone):
-    url = selenium_standalone.server_hostname
-    port = selenium_standalone.server_port
-
     build_dir = Path(__file__).parents[2] / "build"
+    pyparsing_wheel_name = get_pyparsing_wheel_name()
     shutil.copyfile(
-        build_dir / "pyparsing-3.0.6-py3-none-any.whl",
+        build_dir / pyparsing_wheel_name,
         build_dir / "pyparsing-custom-3.0.6-py3-none-any.whl",
     )
 
     try:
-        selenium_standalone.load_package(f"./pyparsing-custom-3.0.6-py3-none-any.whl")
+        selenium_standalone.load_package("./pyparsing-custom-3.0.6-py3-none-any.whl")
     finally:
         (build_dir / "pyparsing-custom-3.0.6-py3-none-any.whl").unlink()
 
@@ -256,8 +267,10 @@ def test_test_unvendoring(selenium_standalone):
 def test_install_archive(selenium):
     build_dir = Path(__file__).parents[2] / "build"
     test_dir = Path(__file__).parent
+    # TODO: first argument actually works as a path due to implementation,
+    # maybe it can be proposed to typeshed?
     shutil.make_archive(
-        test_dir / "test_pkg", "gztar", root_dir=test_dir, base_dir="test_pkg"
+        str(test_dir / "test_pkg"), "gztar", root_dir=test_dir, base_dir="test_pkg"
     )
     build_test_pkg = build_dir / "test_pkg.tar.gz"
     if not build_test_pkg.exists():
@@ -294,13 +307,67 @@ def test_install_archive(selenium):
         (test_dir / "test_pkg.tar.gz").unlink(missing_ok=True)
 
 
+def test_load_bad_so_file(selenium):
+    # If we load a bad so file, we should catch the error, ignore it (and log a
+    # warning)
+    selenium.run_js(
+        """
+        pyodide.FS.writeFile("/a.so", new Uint8Array(4))
+        await pyodide._api.tests.loadDynlib("/a.so");
+        """
+    )
+    assert (
+        "Failed to load dynlib /a.so. We probably just tried to load a linux .so file or something."
+        in selenium.logs
+    )
+
+
+def test_should_load_dynlib():
+    import sysconfig
+
+    from pyodide._package_loader import should_load_dynlib
+
+    ext_suffix = sysconfig.get_config_var("EXT_SUFFIX")
+    assert ext_suffix
+    should_load = [
+        "a.so",
+        "a/b.so",
+        "b/b.so",
+        "a/b/c/d.so",
+        "a/b/c/d.abi3.so",
+        "x.abi3.so",
+        "a.b.c.so",
+        "a-weird-name.stuff-with-dashes.so",
+        f"x.{ext_suffix}",
+    ]
+    should_not_load = [
+        "a",
+        "a.py",
+        "a.txt",
+        "a/b.txt",
+        "a/b.py",
+        "b/a.py",
+        "q.cpython-38-x86_64-linux-gnu.so",
+        "q.cpython-38-x86_64-linux-gnu.so",
+        "q" + ext_suffix.replace("cpython", "pypy"),
+        "q.cpython-32mu.so",
+        "x.so.1",  # Any chance we'd want these at some point?
+    ]
+    for file in should_load:
+        assert should_load_dynlib(file)
+    for file in should_not_load:
+        assert not should_load_dynlib(file)
+
+
 def test_get_dynlibs():
-    from pyodide._package_loader import get_dynlibs
     import tarfile
-    from zipfile import ZipFile
     from tempfile import NamedTemporaryFile
+    from zipfile import ZipFile
+
+    from pyodide._package_loader import get_dynlibs
 
     files = [
+        "a",
         "a.so",
         "a.py",
         "a.txt",
@@ -320,9 +387,9 @@ def test_get_dynlibs():
         t.flush()
         assert sorted(get_dynlibs(t, Path("/p"))) == so_files
     with NamedTemporaryFile(suffix=".zip") as t:
-        x = ZipFile(t, mode="w")
+        x2 = ZipFile(t, mode="w")
         for file in files:
-            x.writestr(file, "")
-        x.close()
+            x2.writestr(file, "")
+        x2.close()
         t.flush()
         assert sorted(get_dynlibs(t, Path("/p"))) == so_files

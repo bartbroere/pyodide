@@ -1,23 +1,22 @@
 """
 Various common utilities for testing.
 """
-import re
 import contextlib
+import functools
 import json
 import multiprocessing
-import textwrap
-import tempfile
-import time
 import os
 import pathlib
-import pexpect
 import queue
-import sys
+import re
 import shutil
-import functools
-import pytest
+import sys
+import tempfile
+import textwrap
+import time
 
-from typing import List
+import pexpect
+import pytest
 
 ROOT_PATH = pathlib.Path(__file__).parents[0].resolve()
 TEST_PATH = ROOT_PATH / "src" / "tests"
@@ -26,7 +25,7 @@ BUILD_PATH = ROOT_PATH / "build"
 sys.path.append(str(ROOT_PATH / "pyodide-build"))
 sys.path.append(str(ROOT_PATH / "src" / "py"))
 
-from pyodide_build.testing import set_webdriver_script_timeout, parse_driver_timeout
+from pyodide_build.testing import parse_driver_timeout, set_webdriver_script_timeout
 
 
 def pytest_addoption(parser):
@@ -75,7 +74,7 @@ def pytest_collection_modifyitems(config, items):
 
 
 @functools.cache
-def built_packages() -> List[str]:
+def built_packages() -> list[str]:
     """Returns the list of built package names from packages.json"""
     packages_json_path = BUILD_PATH / "packages.json"
     if not packages_json_path.exists():
@@ -109,12 +108,14 @@ class SeleniumWrapper:
         server_log=None,
         load_pyodide=True,
         script_timeout=20,
+        script_type="classic",
     ):
         self.server_port = server_port
         self.server_hostname = server_hostname
         self.base_url = f"http://{self.server_hostname}:{self.server_port}"
         self.server_log = server_log
-        self.driver = self.get_driver()
+        self.script_type = script_type
+        self.driver = self.get_driver()  # type: ignore[attr-defined]
         self.set_script_timeout(script_timeout)
         self.script_timeout = script_timeout
         self.prepare_driver()
@@ -128,7 +129,12 @@ class SeleniumWrapper:
     SETUP_CODE = pathlib.Path(ROOT_PATH / "tools/testsetup.js").read_text()
 
     def prepare_driver(self):
-        self.driver.get(f"{self.base_url}/test.html")
+        if self.script_type == "classic":
+            self.driver.get(f"{self.base_url}/test.html")
+        elif self.script_type == "module":
+            self.driver.get(f"{self.base_url}/module_test.html")
+        else:
+            raise Exception("Unknown script type to load!")
 
     def set_script_timeout(self, timeout):
         self.driver.set_script_timeout(timeout)
@@ -149,7 +155,7 @@ class SeleniumWrapper:
     def load_pyodide(self):
         self.run_js(
             """
-            let pyodide = await loadPyodide({ indexURL : './', fullStdLib: false, jsglobals : self });
+            let pyodide = await loadPyodide({ fullStdLib: false, jsglobals : self });
             self.pyodide = pyodide;
             globalThis.pyodide = pyodide;
             pyodide._api.inTestHoist = true; // improve some error messages for tests
@@ -158,7 +164,7 @@ class SeleniumWrapper:
 
     def initialize_global_hiwire_objects(self):
         """
-        There are a bunch of global objects that ocassionally enter the hiwire cache
+        There are a bunch of global objects that occasionally enter the hiwire cache
         but never leave. The refcount checks get angry about them if they aren't preloaded.
         We need to go through and touch them all once to keep everything okay.
         """
@@ -173,8 +179,6 @@ class SeleniumWrapper:
             pyodide._api.importlib.invalidate_caches;
             pyodide._api.package_loader.unpack_buffer;
             pyodide._api.package_loader.get_dynlibs;
-            pyodide._api._util_module = pyodide.pyimport("pyodide._util");
-            pyodide._api._util_module.unpack_buffer_archive;
             pyodide.runPython("");
             """
         )
@@ -259,7 +263,7 @@ class SeleniumWrapper:
                     %s
                     cb([0, result]);
                 } catch (e) {
-                    cb([1, e.toString(), e.stack]);
+                    cb([1, e.toString(), e.stack, e.message]);
                 }
             })()
         """
@@ -267,6 +271,7 @@ class SeleniumWrapper:
         if retval[0] == 0:
             return retval[1]
         else:
+            print("JavascriptException message: ", retval[3])
             raise JavascriptException(retval[1], retval[2])
 
     def get_num_hiwire_keys(self):
@@ -305,9 +310,15 @@ class SeleniumWrapper:
             # we have a multiline string, fix indentation
             code = textwrap.dedent(code)
 
+        worker_file = (
+            "webworker_dev.js"
+            if self.script_type == "classic"
+            else "module_webworker_dev.js"
+        )
+
         return self.run_js(
             """
-            let worker = new Worker( '{}' );
+            let worker = new Worker('{}', {{ type: '{}' }});
             let res = new Promise((res, rej) => {{
                 worker.onerror = e => rej(e);
                 worker.onmessage = e => {{
@@ -321,14 +332,15 @@ class SeleniumWrapper:
             }});
             return await res
             """.format(
-                f"http://{self.server_hostname}:{self.server_port}/webworker_dev.js",
+                f"http://{self.server_hostname}:{self.server_port}/{worker_file}",
+                self.script_type,
                 code,
             ),
             pyodide_checks=False,
         )
 
     def load_package(self, packages):
-        self.run_js("await pyodide.loadPackage({!r})".format(packages))
+        self.run_js(f"await pyodide.loadPackage({packages!r})")
 
     @property
     def urls(self):
@@ -418,10 +430,10 @@ class NodeWrapper(SeleniumWrapper):
     def run_js_inner(self, code, check_code):
         check_code = ""
         wrapped = """
-            let result = await (async () => { %s })();
-            %s
+            let result = await (async () => {{ {} }})();
+            {}
             return result;
-        """ % (
+        """.format(
             code,
             check_code,
         )
@@ -435,7 +447,7 @@ class NodeWrapper(SeleniumWrapper):
         self.p.expect_exact(f"{cmd_id}:UUID\r\n")
         if self.p.before:
             self._logs.append(self.p.before.decode()[:-2].replace("\r", ""))
-        self.p.expect(f"[01]\r\n")
+        self.p.expect("[01]\r\n")
         success = int(self.p.match[0].decode()[0]) == 0
         self.p.expect_exact(f"\r\n{cmd_id}:UUID\r\n")
         if success:
@@ -451,7 +463,7 @@ def pytest_runtest_call(item):
     not possible to "Fail" a test from a fixture (no matter what you do, pytest
     sets the test status to "Error"). The approach suggested there is hook
     pytest_runtest_call as we do here. To get access to the selenium fixture, we
-    immitate the definition of pytest_pyfunc_call:
+    imitate the definition of pytest_pyfunc_call:
     https://github.com/pytest-dev/pytest/blob/6.2.2/src/_pytest/python.py#L177
 
     Pytest issue #5044:
@@ -555,7 +567,7 @@ def _maybe_skip_test(item, delayed=False):
 
 
 @contextlib.contextmanager
-def selenium_common(request, web_server_main, load_pyodide=True):
+def selenium_common(request, web_server_main, load_pyodide=True, script_type="classic"):
     """Returns an initialized selenium object.
 
     If `_should_skip_test` indicate that the test will be skipped,
@@ -563,6 +575,7 @@ def selenium_common(request, web_server_main, load_pyodide=True):
     """
 
     server_hostname, server_port, server_log = web_server_main
+    cls: type[SeleniumWrapper]
     if request.param == "firefox":
         cls = FirefoxWrapper
     elif request.param == "chrome":
@@ -570,12 +583,13 @@ def selenium_common(request, web_server_main, load_pyodide=True):
     elif request.param == "node":
         cls = NodeWrapper
     else:
-        assert False
+        raise AssertionError(f"Unknown browser: {request.param}")
     selenium = cls(
         server_port=server_port,
         server_hostname=server_hostname,
         server_log=server_log,
         load_pyodide=load_pyodide,
+        script_type=script_type,
     )
     try:
         yield selenium
@@ -598,12 +612,31 @@ def selenium_standalone(request, web_server_main):
                 print(selenium.logs)
 
 
-@contextlib.contextmanager
-def selenium_standalone_noload_common(request, web_server_main):
+@pytest.fixture(params=["firefox", "chrome", "node"], scope="module")
+def selenium_esm(request, web_server_main):
     # Avoid loading the fixture if the test is going to be skipped
     _maybe_skip_test(request.node)
 
-    with selenium_common(request, web_server_main, load_pyodide=False) as selenium:
+    with selenium_common(
+        request, web_server_main, load_pyodide=True, script_type="module"
+    ) as selenium:
+        with set_webdriver_script_timeout(
+            selenium, script_timeout=parse_driver_timeout(request)
+        ):
+            try:
+                yield selenium
+            finally:
+                print(selenium.logs)
+
+
+@contextlib.contextmanager
+def selenium_standalone_noload_common(request, web_server_main, script_type="classic"):
+    # Avoid loading the fixture if the test is going to be skipped
+    _maybe_skip_test(request.node)
+
+    with selenium_common(
+        request, web_server_main, load_pyodide=False, script_type=script_type
+    ) as selenium:
         with set_webdriver_script_timeout(
             selenium, script_timeout=parse_driver_timeout(request)
         ):
@@ -614,11 +647,20 @@ def selenium_standalone_noload_common(request, web_server_main):
 
 
 @pytest.fixture(params=["firefox", "chrome"], scope="function")
-def selenium_webworker_standalone(request, web_server_main):
+def selenium_webworker_standalone(request, web_server_main, script_type):
     # Avoid loading the fixture if the test is going to be skipped
+    if request.param == "firefox" and script_type == "module":
+        pytest.skip("firefox does not support module type web worker")
     _maybe_skip_test(request.node)
-    with selenium_standalone_noload_common(request, web_server_main) as selenium:
+    with selenium_standalone_noload_common(
+        request, web_server_main, script_type=script_type
+    ) as selenium:
         yield selenium
+
+
+@pytest.fixture(params=["classic", "module"], scope="module")
+def script_type(request):
+    return request.param
 
 
 @pytest.fixture(params=["firefox", "chrome", "node"], scope="function")
@@ -688,7 +730,7 @@ def spawn_web_server(build_dir=None):
 
     tmp_dir = tempfile.mkdtemp()
     log_path = pathlib.Path(tmp_dir) / "http-server.log"
-    q = multiprocessing.Queue()
+    q: multiprocessing.Queue[str] = multiprocessing.Queue()
     p = multiprocessing.Process(target=run_web_server, args=(q, log_path, build_dir))
 
     try:
@@ -741,8 +783,8 @@ def run_web_server(q, log_filepath, build_dir):
     with socketserver.TCPServer(("", 0), Handler) as httpd:
         host, port = httpd.server_address
         print(f"Starting webserver at http://{host}:{port}")
-        httpd.server_name = "test-server"
-        httpd.server_port = port
+        httpd.server_name = "test-server"  # type: ignore[attr-defined]
+        httpd.server_port = port  # type: ignore[attr-defined]
         q.put(port)
 
         def service_actions():
@@ -753,7 +795,7 @@ def run_web_server(q, log_filepath, build_dir):
             except queue.Empty:
                 pass
 
-        httpd.service_actions = service_actions
+        httpd.service_actions = service_actions  # type: ignore[assignment]
         httpd.serve_forever()
 
 

@@ -1,9 +1,11 @@
-import pytest
 import re
-
 from textwrap import dedent
-from pyodide_build.testing import run_in_pyodide
-from pyodide import find_imports, eval_code, CodeRunner, should_quiet  # noqa: E402
+from typing import Any
+
+import pytest
+
+from pyodide import CodeRunner, eval_code, find_imports, should_quiet  # noqa: E402
+from pyodide_build.testing import PYVERSION, run_in_pyodide
 
 
 def test_find_imports():
@@ -56,8 +58,8 @@ def test_code_runner():
     # Ast transform
     import ast
 
-    l = cr.ast.body[0].value.left
-    cr.ast.body[0].value.left = ast.BinOp(
+    l = cr.ast.body[0].value.left  # type: ignore[attr-defined]
+    cr.ast.body[0].value.left = ast.BinOp(  # type: ignore[attr-defined]
         left=l, op=ast.Mult(), right=ast.Constant(value=2)
     )
     assert cr.compile().run({"x": 3}) == 13
@@ -68,7 +70,7 @@ def test_code_runner():
 
 
 def test_code_runner_mode():
-    from codeop import PyCF_DONT_IMPLY_DEDENT
+    from codeop import PyCF_DONT_IMPLY_DEDENT  # type: ignore[attr-defined]
 
     assert CodeRunner("1+1\n1+1", mode="exec").compile().run() == 2
     with pytest.raises(SyntaxError, match="invalid syntax"):
@@ -78,14 +80,14 @@ def test_code_runner_mode():
         match="multiple statements found while compiling a single statement",
     ):
         CodeRunner("1+1\n1+1", mode="single").compile().run()
-    with pytest.raises(SyntaxError, match="unexpected EOF while parsing"):
+    with pytest.raises(SyntaxError, match="invalid syntax"):
         CodeRunner(
             "def f():\n  1", mode="single", flags=PyCF_DONT_IMPLY_DEDENT
         ).compile().run()
 
 
 def test_eval_code():
-    ns = {}
+    ns: dict[str, Any] = {}
     assert (
         eval_code(
             """
@@ -149,12 +151,12 @@ def test_eval_code():
 
 
 def test_eval_code_locals():
-    globals = {}
+    globals: dict[str, Any] = {}
     eval_code("x=2", globals, {})
     with pytest.raises(NameError):
         eval_code("x", globals, {})
 
-    locals = {}
+    locals: dict[str, Any] = {}
     eval_code("import sys; sys.getrecursionlimit()", globals, locals)
     with pytest.raises(NameError):
         eval_code("sys.getrecursionlimit()", globals, {})
@@ -166,6 +168,33 @@ def test_eval_code_locals():
     with pytest.raises(NameError):
         eval_code("invalidate_caches()", globals, globals)
     eval_code("invalidate_caches()", globals, locals)
+
+
+def test_deprecations(selenium_standalone):
+    selenium = selenium_standalone
+    selenium.run_js(
+        """
+        let d = pyodide.runPython("{}");
+        pyodide.runPython("x=2", d);
+        pyodide.runPython("y=2", d);
+        assert(() => d.get("x") === 2);
+        d.destroy();
+        """
+    )
+    dep_msg = "Passing a PyProxy as the second argument to runPython is deprecated and will be removed in v0.21. Use 'runPython(code, {globals : some_dict})' instead."
+    assert selenium.logs.count(dep_msg) == 1
+    selenium.run_js(
+        """
+        pyodide.runPython(`
+            import shutil
+            shutil.make_archive("blah", "zip")
+        `);
+        pyodide.unpackArchive(pyodide.FS.readFile("blah.zip"), "zip", "abc");
+        pyodide.unpackArchive(pyodide.FS.readFile("blah.zip"), "zip", "abc");
+        """
+    )
+    dep_msg = "Passing a string as the third argument to unpackArchive is deprecated and will be removed in v0.21. Instead use { extract_dir : 'some_path' }"
+    assert selenium.logs.count(dep_msg) == 1
 
 
 @run_in_pyodide
@@ -195,7 +224,7 @@ def test_dup_temp_file():
 
     tf = TemporaryFile(buffering=0)
     fd1 = os.dup(tf.fileno())
-    fd2 = os.dup2(tf.fileno(), 50)
+    os.dup2(tf.fileno(), 50)
     s = b"hello there!"
     tf.write(s)
     tf2 = open(fd1, "w+")
@@ -288,7 +317,7 @@ def test_hiwire_is_promise(selenium):
 
     if not selenium.browser == "node":
         assert selenium.run_js(
-            f"return pyodide._module.hiwire.isPromise(document.all) === false;"
+            "return pyodide._module.hiwire.isPromise(document.all) === false;"
         )
 
     assert selenium.run_js(
@@ -324,9 +353,12 @@ def test_keyboard_interrupt(selenium):
         try {
             pyodide.runPython(`
                 from js import triggerKeyboardInterrupt
+                def f():
+                    pass
                 for x in range(100000):
                     if x == 2000:
                         triggerKeyboardInterrupt()
+                    f()
             `);
         } catch(e){}
         pyodide.setInterruptBuffer(undefined);
@@ -626,7 +658,7 @@ def test_return_destroyed_value(selenium):
 
 
 def test_docstrings_a():
-    from _pyodide.docstring import get_cmeth_docstring, dedent_docstring
+    from _pyodide.docstring import dedent_docstring, get_cmeth_docstring
     from pyodide import JsProxy
 
     jsproxy = JsProxy()
@@ -637,8 +669,8 @@ def test_docstrings_a():
 
 
 def test_docstrings_b(selenium):
-    from pyodide import create_once_callable, JsProxy
     from _pyodide.docstring import dedent_docstring
+    from pyodide import JsProxy, create_once_callable
 
     jsproxy = JsProxy()
     ds_then_should_equal = dedent_docstring(jsproxy.then.__doc__)
@@ -844,14 +876,14 @@ def test_js_stackframes(selenium):
         ["test.html", "d2"],
         ["test.html", "d1"],
         ["pyodide.js", "runPython"],
-        ["/lib/python3.9/site-packages/_pyodide/_base.py", "eval_code"],
-        ["/lib/python3.9/site-packages/_pyodide/_base.py", "run"],
+        [f"/lib/{PYVERSION}/site-packages/_pyodide/_base.py", "eval_code"],
+        [f"/lib/{PYVERSION}/site-packages/_pyodide/_base.py", "run"],
         ["<exec>", "<module>"],
         ["<exec>", "c2"],
         ["<exec>", "c1"],
         ["test.html", "b"],
         ["pyodide.js", "pyimport"],
-        ["/lib/python3.9/importlib/__init__.py", "import_module"],
+        [f"/lib/{PYVERSION}/importlib/__init__.py", "import_module"],
     ]
     assert normalize_tb(res[: len(frames)]) == frames
 
@@ -879,6 +911,74 @@ def test_reentrant_fatal(selenium_standalone):
         return success;
         """
     )
+
+
+def test_weird_throws(selenium):
+    """Throw strange Javascript garbage and make sure we survive."""
+    selenium.run_js(
+        '''
+        self.funcs = {
+            null(){ throw null; },
+            undefined(){ throw undefined; },
+            obj(){ throw {}; },
+            obj_null_proto(){ throw Object.create(null); },
+            string(){ throw "abc"; },
+            func(){ throw self.funcs.func; },
+            number(){ throw 12; },
+            bigint(){ throw 12n; },
+        };
+        pyodide.runPython(`
+            from js import funcs
+            from unittest import TestCase
+            from pyodide import JsException
+            raises = TestCase().assertRaisesRegex
+            msgs = {
+                "null" : ['type object .* tag .object Null.', '"""null"""',  'fails'],
+                "undefined" : ['type undefined .* tag .object Undefined.', '"""undefined"""',  'fails'],
+                "obj" : ['type object .* tag .object Object.', '""".object Object."""',  '""".object Object."""'],
+                "obj_null_proto" : ['type object .* tag .object Object.', 'fails',  'fails'],
+                "string" : ["Error: abc"],
+                "func" : ['type function .* tag .object Function.', 'throw self.funcs.func',  'throw self.funcs.func'],
+                "number" : ['type number .* tag .object Number.'],
+                "bigint" : ['type bigint .* tag .object BigInt.'],
+            }
+            for name, f in funcs.object_entries():
+                msg = '.*\\\\n.*'.join(msgs.get(name, ["xx"]))
+                with raises(JsException, msg):
+                    f()
+        `);
+        '''
+    )
+
+
+@pytest.mark.skip_refcount_check
+@pytest.mark.skip_pyproxy_check
+@pytest.mark.parametrize("to_throw", ["Object.create(null);", "'Some message'", "null"])
+def test_weird_fatals(selenium_standalone, to_throw):
+    expected_message = {
+        "Object.create(null);": "Error: A value of type object with tag [object Object] was thrown as an error!",
+        "'Some message'": "Error: Some message",
+        "null": "Error: A value of type object with tag [object Null] was thrown as an error!",
+    }[to_throw]
+    msg = selenium_standalone.run_js(
+        f"""
+        self.f = function(){{ throw {to_throw} }};
+        """
+        """
+        try {
+            pyodide.runPython(`
+                from _pyodide_core import raw_call
+                from js import f
+                raw_call(f)
+            `);
+        } catch(e){
+            return e.toString();
+        }
+        """
+    )
+    print("msg", msg[: len(expected_message)])
+    print("expected_message", expected_message)
+    assert msg[: len(expected_message)] == expected_message
 
 
 def test_restore_error(selenium):
@@ -957,17 +1057,16 @@ def test_custom_stdin_stdout(selenium_standalone_noload):
         globalThis.pyodide = pyodide;
         """
     )
-    outstrings = sum([s.removesuffix("\n").split("\n") for s in strings], [])
+    outstrings: list[str] = sum((s.removesuffix("\n").split("\n") for s in strings), [])
     print(outstrings)
     assert (
         selenium.run_js(
-            """
+            f"""
         return pyodide.runPython(`
-            [input() for x in range(%s)]
+            [input() for x in range({len(outstrings)})]
             # ... test more stuff
         `).toJs();
         """
-            % len(outstrings)
         )
         == outstrings
     )
@@ -982,7 +1081,10 @@ def test_custom_stdin_stdout(selenium_standalone_noload):
         return [self.stdoutStrings, self.stderrStrings];
         """
     )
-    assert stdoutstrings == ["Python initialization complete", "something to stdout"]
+    assert stdoutstrings[-2:] == [
+        "Python initialization complete",
+        "something to stdout",
+    ]
     assert stderrstrings == ["something to stderr"]
 
 
