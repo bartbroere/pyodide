@@ -1,8 +1,8 @@
 diff --git a/requests/models.py b/requests/models.py
-index e7d292d580..b9530887b4 100644
+index e7d292d5..8af78cc8 100644
 --- a/requests/models.py
 +++ b/requests/models.py
-@@ -8,41 +8,35 @@
+@@ -8,41 +8,36 @@ This module contains the primary objects that power Requests.
  """
  
  import datetime
@@ -16,17 +16,17 @@ index e7d292d580..b9530887b4 100644
 +from io import UnsupportedOperation, BytesIO, StringIO
  
 +from urllib3.exceptions import (
-+    LocationParseError)
++    LocationParseError, ProtocolError, DecodeError, ReadTimeoutError)
  from urllib3.fields import RequestField
  from urllib3.filepost import encode_multipart_formdata
  from urllib3.util import parse_url
 -from urllib3.exceptions import (
 -    DecodeError, ReadTimeoutError, ProtocolError, LocationParseError)
- 
+-
 -from io import UnsupportedOperation
 -from .hooks import default_hooks
 -from .structures import CaseInsensitiveDict
--
+ 
 -from .auth import HTTPBasicAuth
 -from .cookies import cookiejar_from_dict, get_cookie_header, _copy_cookie_jar
 -from .exceptions import (
@@ -48,25 +48,26 @@ index e7d292d580..b9530887b4 100644
  from .compat import json as complexjson
 +from .cookies import cookiejar_from_dict, get_cookie_header, _copy_cookie_jar
 +from .exceptions import (
-+    HTTPError, MissingSchema, InvalidURL, InvalidJSONError)
++    HTTPError, MissingSchema, InvalidURL, InvalidJSONError, ContentDecodingError, ChunkedEncodingError,
++    StreamConsumedError)
 +from .hooks import default_hooks
  from .status_codes import codes
 +from .structures import CaseInsensitiveDict
 +from .utils import (
 +    guess_filename, get_auth_from_url, requote_uri,
 +    to_key_val_list, parse_header_links,
-+    super_len, check_header_validity)
++    super_len, check_header_validity, iter_slices, stream_decode_response_unicode)
  
  #: The set of HTTP status codes that indicate an automatically
  #: processable redirect.
-@@ -603,24 +597,18 @@ class Response(object):
+@@ -603,24 +598,18 @@ class Response(object):
          'encoding', 'reason', 'cookies', 'elapsed', 'request'
      ]
  
 -    def __init__(self):
 +    def __init__(self, request):
-+        if request.responseType == 'blob':
-+            self.raw = BytesIO(bytes(request.response.arrayBuffer().result().to_py()))
++        if request.responseType == 'arraybuffer':
++            self.raw = BytesIO(bytes(request.response.result().to_py()))
 +        else:
 +            self.text = str(request.response)
 +            self.raw = StringIO(str(request.response))
@@ -92,68 +93,21 @@ index e7d292d580..b9530887b4 100644
          #: Final URL location of Response.
          self.url = None
  
-@@ -737,59 +725,7 @@ def apparent_encoding(self):
-         return chardet.detect(self.content)['encoding']
- 
-     def iter_content(self, chunk_size=1, decode_unicode=False):
--        """Iterates over the response data.  When stream=True is set on the
--        request, this avoids reading the content at once into memory for
--        large responses.  The chunk size is the number of bytes it should
--        read into memory.  This is not necessarily the length of each item
--        returned as decoding can take place.
+@@ -742,13 +731,11 @@ class Response(object):
+         large responses.  The chunk size is the number of bytes it should
+         read into memory.  This is not necessarily the length of each item
+         returned as decoding can take place.
 -
--        chunk_size must be of type int or None. A value of None will
--        function differently depending on the value of `stream`.
--        stream=True will read data as it arrives in whatever size the
--        chunks are received. If stream=False, data is returned as
--        a single chunk.
+         chunk_size must be of type int or None. A value of None will
+         function differently depending on the value of `stream`.
+         stream=True will read data as it arrives in whatever size the
+         chunks are received. If stream=False, data is returned as
+         a single chunk.
 -
--        If decode_unicode is True, content will be decoded using the best
--        available encoding based on the response.
--        """
--
--        def generate():
--            # Special case for urllib3.
--            if hasattr(self.raw, 'stream'):
--                try:
--                    for chunk in self.raw.stream(chunk_size, decode_content=True):
--                        yield chunk
--                except ProtocolError as e:
--                    raise ChunkedEncodingError(e)
--                except DecodeError as e:
--                    raise ContentDecodingError(e)
--                except ReadTimeoutError as e:
--                    raise ConnectionError(e)
--            else:
--                # Standard file-like object.
--                while True:
--                    chunk = self.raw.read(chunk_size)
--                    if not chunk:
--                        break
--                    yield chunk
--
--            self._content_consumed = True
--
--        if self._content_consumed and isinstance(self._content, bool):
--            raise StreamConsumedError()
--        elif chunk_size is not None and not isinstance(chunk_size, int):
--            raise TypeError("chunk_size must be an int, it is instead a %s." % type(chunk_size))
--        # simulate reading small chunks of the content
--        reused_chunks = iter_slices(self._content, chunk_size)
--
--        stream_chunks = generate()
--
--        chunks = reused_chunks if self._content_consumed else stream_chunks
--
--        if decode_unicode:
--            chunks = stream_decode_response_unicode(chunks, self)
--
--        return chunks
-+        yield self.raw
- 
-     def iter_lines(self, chunk_size=ITER_CHUNK_SIZE, decode_unicode=False, delimiter=None):
-         """Iterates over the response data, one line at a time.  When
-@@ -842,44 +778,6 @@ def content(self):
+         If decode_unicode is True, content will be decoded using the best
+         available encoding based on the response.
+         """
+@@ -842,44 +829,6 @@ class Response(object):
          # since we exhausted the data.
          return self._content
  
@@ -198,7 +152,7 @@ index e7d292d580..b9530887b4 100644
      def json(self, **kwargs):
          r"""Returns the json-encoded content of a response, if any.
  
-@@ -887,34 +785,7 @@ def json(self, **kwargs):
+@@ -887,34 +836,7 @@ class Response(object):
          :raises requests.exceptions.JSONDecodeError: If the response body does not
              contain valid json.
          """
@@ -235,10 +189,10 @@ index e7d292d580..b9530887b4 100644
      @property
      def links(self):
 diff --git a/requests/sessions.py b/requests/sessions.py
-index ae4bcc8e79..d34c51af39 100644
+index ae4bcc8e..d9c24682 100644
 --- a/requests/sessions.py
 +++ b/requests/sessions.py
-@@ -7,35 +7,35 @@
+@@ -7,35 +7,40 @@ requests.sessions
  This module provides a Session object to manage and persist settings across
  requests (cookies, auth, proxies).
  """
@@ -246,14 +200,19 @@ index ae4bcc8e79..d34c51af39 100644
  import os
  import sys
  import time
--from datetime import timedelta
 +import warnings
- from collections import OrderedDict
-+from datetime import timedelta
++from collections import OrderedDict, Iterable
+ from datetime import timedelta
+-from collections import OrderedDict
 +from urllib.parse import urlencode
-+
-+from js import Blob, XMLHttpRequest
  
++from js import XMLHttpRequest
++
++try:
++    from js import Blob
++except:
++    from js.buffer import Blob
++
 +from ._internal_utils import to_native_string
  from .auth import _basic_auth_str
 -from .compat import cookielib, is_py3, urljoin, urlparse, Mapping
@@ -287,7 +246,7 @@ index ae4bcc8e79..d34c51af39 100644
  
  # Preferred clock, based on which one is more accurate on a given system.
  if sys.platform == 'win32':
-@@ -334,138 +334,48 @@ def rebuild_method(self, prepared_request, response):
+@@ -334,25 +339,14 @@ class SessionRedirectMixin(object):
          prepared_request.method = method
  
  
@@ -317,10 +276,8 @@ index ae4bcc8e79..d34c51af39 100644
 -
      __attrs__ = [
          'headers', 'cookies', 'auth', 'proxies', 'hooks', 'params', 'verify',
--        'cert', 'adapters', 'stream', 'trust_env',
-+        'cert', 'prefetch', 'adapters', 'stream', 'trust_env',
-         'max_redirects',
-     ]
+         'cert', 'adapters', 'stream', 'trust_env',
+@@ -361,111 +355,35 @@ class Session(SessionRedirectMixin):
  
      def __init__(self):
  
@@ -398,8 +355,7 @@ index ae4bcc8e79..d34c51af39 100644
 -        transmission and returns it. The :class:`PreparedRequest` has settings
 -        merged from the :class:`Request <Request>` instance and those of the
 -        :class:`Session`.
-+        ...
- 
+-
 -        :param request: :class:`Request` instance to prepare with this
 -            session's settings.
 -        :rtype: requests.PreparedRequest
@@ -433,17 +389,22 @@ index ae4bcc8e79..d34c51af39 100644
 -            hooks=merge_hooks(request.hooks, self.hooks),
 -        )
 -        return p
++        ...
++
 +    def set_headers(self, request, headers):
 +        for header, value in self.headers.items():
 +            request.setRequestHeader(header, value)
 +        if isinstance(headers, Mapping):
 +            for header, value in headers.items():
 +                request.setRequestHeader(header, value)
++        if isinstance(headers, Iterable):
++            for header, value in headers:
++                request.setRequestHeader(header, value)
 +        return request
  
      def request(self, method, url,
              params=None, data=None, headers=None, cookies=None, files=None,
-@@ -512,36 +422,38 @@ def request(self, method, url,
+@@ -512,36 +430,38 @@ class Session(SessionRedirectMixin):
              If Tuple, ('cert', 'key') pair.
          :rtype: requests.Response
          """
@@ -486,7 +447,7 @@ index ae4bcc8e79..d34c51af39 100644
 +                url = url + '?' + urlencode(params)
 +        self.set_headers(request, headers)
 +        if stream:
-+            request.responseType = "blob"
++            request.responseType = "arraybuffer"
 +        if data:
 +            if isinstance(data, Mapping):
 +                data = Blob.new([json_module.dumps(data)], {
