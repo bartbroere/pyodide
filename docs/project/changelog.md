@@ -189,7 +189,7 @@ Yurchak, Seungmin Kim, Thorsten Beier
 
 ## Version 0.19.0
 
-_January 10, 2021_
+_January 10, 2022_
 
 [See the release notes for a summary.](https://blog.pyodide.org/posts/0.19-release/)
 

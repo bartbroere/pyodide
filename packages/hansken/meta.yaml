@@ -1,10 +1,10 @@
 package:
   name: hansken
-  version: 2021.11.10
+  version: 2022.1.21
 
 source:
-  url: https://files.pythonhosted.org/packages/61/5c/d7519317fe82452f47bbc7511e404f506b73cc129ce9379cd0080fd7fee8/hansken-2021.11.22.tar.gz
-  sha256: 54ff6e3265f94fd662211f0807848654a8aa9a31a3d2406f0c8fdfdc55bc2be0
+  url: https://files.pythonhosted.org/packages/df/fb/b2de05f0501dca1132c5947f2e5ec6e364ee3fba0a8f9195e9c8a0383e5d/hansken-2022.1.21.tar.gz
+  sha256: e931ba119b484df990d0b0bca8a98b1e9a33a255fed617953c043f92cc4dca4d
 
 requirements:
  run:
@@ -14,6 +14,7 @@ requirements:
    - iso8601
    - ijson
    - decorator
+   - tabulate
 
 test:
   imports:
