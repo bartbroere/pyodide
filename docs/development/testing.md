@@ -18,7 +18,7 @@ and check that they are in your `PATH`.
 
 ### Running the Python test suite
 
-To run the pytest suite of tests, type on the command line:
+To run the pytest suite of tests, from the root directory of Pyodide, type on the command line:
 
 ```bash
 pytest
@@ -76,7 +76,7 @@ To run common benchmarks to understand Pyodide's performance, begin by
 installing the same prerequisites as for testing. Then run:
 
 ```bash
-make benchmark
+PYODIDE_PACKAGES="numpy,matplotlib" make benchmark
 ```
 
 ## Linting

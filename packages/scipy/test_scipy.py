@@ -1,52 +1,66 @@
-import pytest
-from conftest import selenium_context_manager
+from pyodide_build import testing
+
+run_in_pyodide = testing.run_in_pyodide(
+    module_scope=True,
+    packages=["scipy"],
+    # xfail_browsers={"chrome": "Times out in chrome"},
+    driver_timeout=40,
+)
 
 
-@pytest.mark.driver_timeout(40)
-def test_scipy_linalg(selenium_module_scope):
-    if selenium_module_scope.browser == "chrome":
-        pytest.xfail("Times out in chrome")
-    with selenium_context_manager(selenium_module_scope) as selenium:
-        selenium.load_package("scipy")
-        selenium.run(
-            r"""
-            import numpy as np
-            import scipy as sp
-            import scipy.linalg
-            from numpy.testing import assert_allclose
+@run_in_pyodide
+def test_scipy_linalg():
+    import numpy as np
+    import scipy.linalg
+    from numpy.testing import assert_allclose
 
-            N = 10
-            X = np.random.RandomState(42).rand(N, N)
+    N = 10
+    X = np.random.RandomState(42).rand(N, N)
 
-            X_inv = scipy.linalg.inv(X)
+    X_inv = scipy.linalg.inv(X)
 
-            res = X.dot(X_inv)
+    res = X.dot(X_inv)
 
-            assert_allclose(res, np.identity(N),
-                            rtol=1e-07, atol=1e-9)
-            """
+    assert_allclose(res, np.identity(N), rtol=1e-07, atol=1e-9)
+
+
+@run_in_pyodide
+def test_brentq():
+    from scipy.optimize import brentq
+
+    brentq(lambda x: x, -1, 1)
+
+
+@run_in_pyodide
+def test_dlamch():
+    from scipy.linalg import lapack
+
+    lapack.dlamch("Epsilon-Machine")
+
+
+@run_in_pyodide
+def test_binom_ppf():
+    from scipy.stats import binom
+
+    assert binom.ppf(0.9, 1000, 0.1) == 112
+
+
+@testing.run_in_pyodide(module_scope=True, packages=["pytest", "scipy-tests"])
+def test_scipy_pytest():
+    import pytest
+
+    def runtest(module, filter):
+        pytest.main(
+            [
+                "--pyargs",
+                f"scipy.{module}",
+                "--continue-on-collection-errors",
+                "-vv",
+                "-k",
+                filter,
+            ]
         )
 
-
-@pytest.mark.driver_timeout(40)
-def test_brentq(selenium_module_scope):
-    with selenium_context_manager(selenium_module_scope) as selenium:
-        selenium.load_package("scipy")
-        selenium.run(
-            """
-            from scipy.optimize import brentq
-            brentq(lambda x: x, -1, 1)
-            """
-        )
-
-
-@pytest.mark.driver_timeout(40)
-def test_dlamch(selenium_module_scope):
-    with selenium_context_manager(selenium_module_scope) as selenium:
-        selenium.load_package("scipy")
-        selenium.run(
-            """
-            from scipy.linalg import lapack
-            lapack.dlamch('Epsilon-Machine')
-            """
-        )
+    runtest("odr", "explicit")
+    runtest("signal.tests.test_ltisys", "TestImpulse2")
+    runtest("stats.tests.test_multivariate", "haar")
