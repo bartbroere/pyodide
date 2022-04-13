@@ -193,7 +193,7 @@ index e7d292d5..8ab50510 100644
      @property
      def links(self):
 diff --git a/requests/sessions.py b/requests/sessions.py
-index ae4bcc8e..08fbafdf 100644
+index ae4bcc8e..2a0c8853 100644
 --- a/requests/sessions.py
 +++ b/requests/sessions.py
 @@ -7,35 +7,40 @@ requests.sessions
@@ -281,7 +281,7 @@ index ae4bcc8e..08fbafdf 100644
      __attrs__ = [
          'headers', 'cookies', 'auth', 'proxies', 'hooks', 'params', 'verify',
          'cert', 'adapters', 'stream', 'trust_env',
-@@ -361,111 +355,36 @@ class Session(SessionRedirectMixin):
+@@ -361,111 +355,37 @@ class Session(SessionRedirectMixin):
  
      def __init__(self):
  
@@ -401,15 +401,16 @@ index ae4bcc8e..08fbafdf 100644
 +        if isinstance(headers, Mapping):
 +            for header, value in headers.items():
 +                request.setRequestHeader(header, value)
-+            return request
++            return CaseInsensitiveDict(headers)
 +        if isinstance(headers, Iterable):
 +            for header, value in headers:
 +                request.setRequestHeader(header, value)
-+            return request
++            return CaseInsensitiveDict(headers)
++        return CaseInsensitiveDict({})
  
      def request(self, method, url,
              params=None, data=None, headers=None, cookies=None, files=None,
-@@ -512,36 +431,41 @@ class Session(SessionRedirectMixin):
+@@ -512,36 +432,44 @@ class Session(SessionRedirectMixin):
              If Tuple, ('cert', 'key') pair.
          :rtype: requests.Response
          """
@@ -455,7 +456,10 @@ index ae4bcc8e..08fbafdf 100644
 +        if params:
 +            if isinstance(params, Mapping):
 +                url = url + '?' + urlencode(params)
-+        self.set_headers(request, headers)
++        headers = self.set_headers(request, headers)
++        if ('range' in headers) or ('accept' in headers and 'application/octet-stream' in headers['accept']):
++            request.overrideMimeType('text/plain; charset=x-user-defined')
++            request.responseIsBinary = True
 +        if data:
 +            if isinstance(data, Mapping):
 +                data = Blob.new([json_module.dumps(data)], {
