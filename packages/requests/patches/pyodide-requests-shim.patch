@@ -1,5 +1,5 @@
 diff --git a/requests/models.py b/requests/models.py
-index e7d292d5..e4485a5e 100644
+index e7d292d5..8ab50510 100644
 --- a/requests/models.py
 +++ b/requests/models.py
 @@ -8,41 +8,36 @@ This module contains the primary objects that power Requests.
@@ -13,7 +13,7 @@ index e7d292d5..e4485a5e 100644
  # such as in Embedded Python. See https://github.com/psf/requests/issues/3578.
 -import encodings.idna
 +from email.parser import Parser
-+from io import UnsupportedOperation, BytesIO
++from io import UnsupportedOperation, BytesIO, StringIO
  
 +from urllib3.exceptions import (
 +    LocationParseError, ProtocolError, DecodeError, ReadTimeoutError)
@@ -60,7 +60,7 @@ index e7d292d5..e4485a5e 100644
  
  #: The set of HTTP status codes that indicate an automatically
  #: processable redirect.
-@@ -603,24 +598,21 @@ class Response(object):
+@@ -603,24 +598,22 @@ class Response(object):
          'encoding', 'reason', 'cookies', 'elapsed', 'request'
      ]
  
@@ -71,6 +71,7 @@ index e7d292d5..e4485a5e 100644
 +            self.raw = BytesIO(bytes(ord(byte) & 0xff for byte in request.response))
 +        else:
 +            self.text = str(request.response)
++            self.raw = StringIO(str(request.response))
 +        self.status_code = request.status
 +        self.headers = CaseInsensitiveDict(Parser().parsestr(request.getAllResponseHeaders(), headersonly=True))
 +        # Strip the transfer-encoding header, since Python logic relying on checking this header will have a bad time
@@ -96,7 +97,7 @@ index e7d292d5..e4485a5e 100644
          #: Final URL location of Response.
          self.url = None
  
-@@ -742,13 +734,11 @@ class Response(object):
+@@ -742,13 +735,11 @@ class Response(object):
          large responses.  The chunk size is the number of bytes it should
          read into memory.  This is not necessarily the length of each item
          returned as decoding can take place.
@@ -110,7 +111,7 @@ index e7d292d5..e4485a5e 100644
          If decode_unicode is True, content will be decoded using the best
          available encoding based on the response.
          """
-@@ -842,44 +832,6 @@ class Response(object):
+@@ -842,44 +833,6 @@ class Response(object):
          # since we exhausted the data.
          return self._content
  
@@ -155,7 +156,7 @@ index e7d292d5..e4485a5e 100644
      def json(self, **kwargs):
          r"""Returns the json-encoded content of a response, if any.
  
-@@ -887,34 +839,7 @@ class Response(object):
+@@ -887,34 +840,7 @@ class Response(object):
          :raises requests.exceptions.JSONDecodeError: If the response body does not
              contain valid json.
          """
@@ -192,7 +193,7 @@ index e7d292d5..e4485a5e 100644
      @property
      def links(self):
 diff --git a/requests/sessions.py b/requests/sessions.py
-index ae4bcc8e..95ae42ae 100644
+index ae4bcc8e..08fbafdf 100644
 --- a/requests/sessions.py
 +++ b/requests/sessions.py
 @@ -7,35 +7,40 @@ requests.sessions
@@ -280,7 +281,7 @@ index ae4bcc8e..95ae42ae 100644
      __attrs__ = [
          'headers', 'cookies', 'auth', 'proxies', 'hooks', 'params', 'verify',
          'cert', 'adapters', 'stream', 'trust_env',
-@@ -361,111 +355,35 @@ class Session(SessionRedirectMixin):
+@@ -361,111 +355,36 @@ class Session(SessionRedirectMixin):
  
      def __init__(self):
  
@@ -400,14 +401,15 @@ index ae4bcc8e..95ae42ae 100644
 +        if isinstance(headers, Mapping):
 +            for header, value in headers.items():
 +                request.setRequestHeader(header, value)
++            return request
 +        if isinstance(headers, Iterable):
 +            for header, value in headers:
 +                request.setRequestHeader(header, value)
-+        return request
++            return request
  
      def request(self, method, url,
              params=None, data=None, headers=None, cookies=None, files=None,
-@@ -512,36 +430,41 @@ class Session(SessionRedirectMixin):
+@@ -512,36 +431,41 @@ class Session(SessionRedirectMixin):
              If Tuple, ('cert', 'key') pair.
          :rtype: requests.Response
          """
