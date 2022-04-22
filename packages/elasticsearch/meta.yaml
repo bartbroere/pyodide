@@ -1,0 +1,12 @@
+package:
+  name: elasticsearch
+  version: 8.1.2
+source:
+  url: https://files.pythonhosted.org/packages/06/5a/ce95e5c6acbdeb53b0938e7dbe605da9f366b65fb9704cf71d90b0ad6cf2/elasticsearch-8.1.2.tar.gz
+  sha256: bf031b44c483f6dc40d607186103d8a152ce4ade96e4ed4c656f2421f794e123
+test:
+  imports:
+    - elasticsearch
+requirements:
+  run:
+    - elastic-transport
