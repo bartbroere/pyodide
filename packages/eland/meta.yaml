@@ -1,0 +1,15 @@
+package:
+  name: eland
+  version: 8.1.0
+source:
+  url: https://files.pythonhosted.org/packages/5f/4d/deab664942c8b778be2d2c5d2efa2e4365e29ae0d8be2bf6644af5edef8a/eland-8.1.0.tar.gz
+  sha256: 887fc3f75068283b66281127eaba932b4a2389cf307978a75e8e7ac076bb9589
+test:
+  imports:
+    - eland
+requirements:
+  run:
+    - elasticsearch
+    - pandas
+    - matplotlib
+
