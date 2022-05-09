@@ -1,0 +1,18 @@
+<div id="mount-point"></div>
+
+<script type="module">
+    import {StarboardEmbed} from "../node_modules/starboard-wrap/dist/index.js"
+    const mount = document.querySelector("#mount-point");
+    window.pyodideArtifactsUrl = window.origin;
+
+    const el = new StarboardEmbed({
+        notebookContent: `# %% [python]
+import requests
+requests.get('https://httpbin.org/get').text`,
+        src: "node_modules/starboard-notebook/dist/index.html"
+    });
+
+    console.log(el);
+    mount.appendChild(el);
+    document.querySelector('iframe').contentWindow.pyodideArtifactsUrl = window.origin;
+</script>

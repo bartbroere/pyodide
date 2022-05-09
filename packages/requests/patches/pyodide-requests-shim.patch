@@ -193,10 +193,10 @@ index e7d292d5..8ab50510 100644
      @property
      def links(self):
 diff --git a/requests/sessions.py b/requests/sessions.py
-index ae4bcc8e..2a0c8853 100644
+index ae4bcc8e..3fd64bf6 100644
 --- a/requests/sessions.py
 +++ b/requests/sessions.py
-@@ -7,35 +7,40 @@ requests.sessions
+@@ -7,35 +7,41 @@ requests.sessions
  This module provides a Session object to manage and persist settings across
  requests (cookies, auth, proxies).
  """
@@ -204,14 +204,15 @@ index ae4bcc8e..2a0c8853 100644
  import os
  import sys
  import time
+-from datetime import timedelta
 +import warnings
-+from collections import OrderedDict, Iterable
- from datetime import timedelta
--from collections import OrderedDict
+ from collections import OrderedDict
++from collections.abc import Iterable
++from datetime import timedelta
 +from urllib.parse import urlencode
- 
-+from js import XMLHttpRequest
 +
++from js import XMLHttpRequest
+ 
 +try:
 +    from js import Blob
 +except:
@@ -250,7 +251,7 @@ index ae4bcc8e..2a0c8853 100644
  
  # Preferred clock, based on which one is more accurate on a given system.
  if sys.platform == 'win32':
-@@ -334,25 +339,14 @@ class SessionRedirectMixin(object):
+@@ -334,25 +340,14 @@ class SessionRedirectMixin(object):
          prepared_request.method = method
  
  
@@ -281,7 +282,7 @@ index ae4bcc8e..2a0c8853 100644
      __attrs__ = [
          'headers', 'cookies', 'auth', 'proxies', 'hooks', 'params', 'verify',
          'cert', 'adapters', 'stream', 'trust_env',
-@@ -361,111 +355,37 @@ class Session(SessionRedirectMixin):
+@@ -361,111 +356,37 @@ class Session(SessionRedirectMixin):
  
      def __init__(self):
  
@@ -410,7 +411,7 @@ index ae4bcc8e..2a0c8853 100644
  
      def request(self, method, url,
              params=None, data=None, headers=None, cookies=None, files=None,
-@@ -512,36 +432,44 @@ class Session(SessionRedirectMixin):
+@@ -512,36 +433,44 @@ class Session(SessionRedirectMixin):
              If Tuple, ('cert', 'key') pair.
          :rtype: requests.Response
          """

@@ -12,3 +12,4 @@ requirements:
     - requests
     - urllib3
     - certifi
+    - ssl

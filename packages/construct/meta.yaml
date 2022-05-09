@@ -1,0 +1,6 @@
+package:
+  name: construct
+  version: 2.10.67
+source:
+  sha256: 730235fedf4f2fee5cfadda1d14b83ef1bf23790fb1cc579073e10f70a050883
+  url: https://files.pythonhosted.org/packages/39/2b/c68eaf8294f01ea534f39b8b4ec1d7308b5195e08570c276b104bccd24ff/construct-2.10.67.tar.gz
