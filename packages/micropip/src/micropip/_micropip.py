@@ -420,6 +420,10 @@ def install(
     Node.js, packages are currently not cached, and will be re-downloaded each
     time ``micropip.install`` is run.
 
+    When used in web browsers, downloads from PyPi will be cached. When run in
+    Node.js, packages are currently not cached, and will be re-downloaded each
+    time ``micropip.install`` is run.
+
     Parameters
     ----------
     requirements : ``str | List[str]``

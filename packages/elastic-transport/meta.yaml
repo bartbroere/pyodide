@@ -1,0 +1,14 @@
+package:
+  name: elastic-transport
+  version: 8.1.2
+source:
+  url: https://files.pythonhosted.org/packages/2c/45/9c704ef72ceca5540427692380a960c9b84a785c5d9f3681d425b82df450/elastic-transport-8.1.2.tar.gz
+  sha256: 869f7d668fb7738776639053fc87499caacbd1bdc7819f0de8025ac0e6cb29ce
+test:
+  imports:
+    - elastic-transport
+requirements:
+  run:
+    - requests
+    - urllib3
+    - certifi

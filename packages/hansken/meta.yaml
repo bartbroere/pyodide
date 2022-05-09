@@ -1,0 +1,21 @@
+package:
+  name: hansken
+  version: 2022.3.1.2
+
+source:
+  url: https://files.pythonhosted.org/packages/61/ed/0097916a5a3e40599b24b6801fd4246fe6b6d73342015a79cff1280c76f4/hansken-2022.3.1.2.tar.gz
+  sha256: 5d452cb60a361390845f131aaf0c49e6a30dba0ee72c69c541a00b818b4cb14c
+
+requirements:
+ run:
+   - requests
+   - logbook
+   - setuptools
+   - iso8601
+   - ijson
+   - decorator
+   - tabulate
+
+test:
+  imports:
+    - hansken
