@@ -3,8 +3,8 @@ package:
   version: 2022.3.1.2
 
 source:
-  url: https://files.pythonhosted.org/packages/61/ed/0097916a5a3e40599b24b6801fd4246fe6b6d73342015a79cff1280c76f4/hansken-2022.3.1.2.tar.gz
-  sha256: 5d452cb60a361390845f131aaf0c49e6a30dba0ee72c69c541a00b818b4cb14c
+  url: https://files.pythonhosted.org/packages/cd/c0/574aeac703cc5068d2bd4f499c8e7010c492a339ea3c810578c475984d66/hansken-2022.6.16.tar.gz
+  sha256: 0be3d85f7607791aa913e8c45ca5a045d32ff290d62ae3c47f521ddeed86cc9f
 
 requirements:
  run:

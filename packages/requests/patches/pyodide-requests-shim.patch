@@ -1,5 +1,5 @@
 diff --git a/requests/models.py b/requests/models.py
-index e7d292d5..8ab50510 100644
+index e7d292d5..6aa2af28 100644
 --- a/requests/models.py
 +++ b/requests/models.py
 @@ -8,41 +8,36 @@ This module contains the primary objects that power Requests.
@@ -60,7 +60,7 @@ index e7d292d5..8ab50510 100644
  
  #: The set of HTTP status codes that indicate an automatically
  #: processable redirect.
-@@ -603,24 +598,22 @@ class Response(object):
+@@ -603,24 +598,23 @@ class Response(object):
          'encoding', 'reason', 'cookies', 'elapsed', 'request'
      ]
  
@@ -68,6 +68,7 @@ index e7d292d5..8ab50510 100644
 +    def __init__(self, request):
 +        if request.responseIsBinary:
 +            # bring everything outside the range of a single byte within this range
++            request.overrideMimeType('text/plain; charset=x-user-defined')
 +            self.raw = BytesIO(bytes(ord(byte) & 0xff for byte in request.response))
 +        else:
 +            self.text = str(request.response)
@@ -97,7 +98,7 @@ index e7d292d5..8ab50510 100644
          #: Final URL location of Response.
          self.url = None
  
-@@ -742,13 +735,11 @@ class Response(object):
+@@ -742,13 +736,11 @@ class Response(object):
          large responses.  The chunk size is the number of bytes it should
          read into memory.  This is not necessarily the length of each item
          returned as decoding can take place.
@@ -111,7 +112,7 @@ index e7d292d5..8ab50510 100644
          If decode_unicode is True, content will be decoded using the best
          available encoding based on the response.
          """
-@@ -842,44 +833,6 @@ class Response(object):
+@@ -842,44 +834,6 @@ class Response(object):
          # since we exhausted the data.
          return self._content
  
@@ -156,7 +157,7 @@ index e7d292d5..8ab50510 100644
      def json(self, **kwargs):
          r"""Returns the json-encoded content of a response, if any.
  
-@@ -887,34 +840,7 @@ class Response(object):
+@@ -887,34 +841,7 @@ class Response(object):
          :raises requests.exceptions.JSONDecodeError: If the response body does not
              contain valid json.
          """
@@ -193,7 +194,7 @@ index e7d292d5..8ab50510 100644
      @property
      def links(self):
 diff --git a/requests/sessions.py b/requests/sessions.py
-index ae4bcc8e..3fd64bf6 100644
+index ae4bcc8e..8ff36d52 100644
 --- a/requests/sessions.py
 +++ b/requests/sessions.py
 @@ -7,35 +7,41 @@ requests.sessions
@@ -411,7 +412,7 @@ index ae4bcc8e..3fd64bf6 100644
  
      def request(self, method, url,
              params=None, data=None, headers=None, cookies=None, files=None,
-@@ -512,36 +433,44 @@ class Session(SessionRedirectMixin):
+@@ -512,36 +433,45 @@ class Session(SessionRedirectMixin):
              If Tuple, ('cert', 'key') pair.
          :rtype: requests.Response
          """
@@ -449,7 +450,6 @@ index ae4bcc8e..3fd64bf6 100644
 +        request.responseIsBinary = False
 +        if stream:
 +            # we ask the browser not to worry about the character set, keeping the raw bytes intact
-+            request.overrideMimeType('text/plain; charset=x-user-defined')
 +            request.responseIsBinary = True
 +        # Send cookies that might be set in the browser already
 +        request.withCredentials = True
@@ -459,7 +459,6 @@ index ae4bcc8e..3fd64bf6 100644
 +                url = url + '?' + urlencode(params)
 +        headers = self.set_headers(request, headers)
 +        if ('range' in headers) or ('accept' in headers and 'application/octet-stream' in headers['accept']):
-+            request.overrideMimeType('text/plain; charset=x-user-defined')
 +            request.responseIsBinary = True
 +        if data:
 +            if isinstance(data, Mapping):
@@ -482,6 +481,9 @@ index ae4bcc8e..3fd64bf6 100644
 +            request.send(data)
 +        else:
 +            request.send()
++        # TODO Implement switching between streaming, chunked, binary and text responses properly
++        if 'text' in request.getResponseHeader("Content-Type") or 'application/json' in request.getResponseHeader('Content-Type'):
++            request.responseIsBinary = False
 +        return Response(request)
  
      def get(self, url, **kwargs):
