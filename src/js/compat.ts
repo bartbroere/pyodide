@@ -34,7 +34,7 @@ export async function initNodeModules() {
   // @ts-ignore
   nodeFetch = (await import("node-fetch")).default;
   // @ts-ignore
-  nodeVmMod = (await import("vm")).default;
+  nodeVmMod = (await import(/* webpackIgnore: true */ "vm")).default;
   if (typeof require !== "undefined") {
     return;
   }
@@ -46,10 +46,10 @@ export async function initNodeModules() {
   // These are all the packages required in pyodide.asm.js. You can get this
   // list with:
   // $ grep -o 'require("[a-z]*")' pyodide.asm.js  | sort -u
-  const fs = await import("fs");
-  const crypto = await import("crypto");
-  const ws = await import("ws");
-  const child_process = await import("child_process");
+  const fs = await import(/* webpackIgnore: true */ "fs");
+  const crypto = await import(/* webpackIgnore: true */ "crypto");
+  const ws = await import(/* webpackIgnore: true */ "ws");
+  const child_process = await import(/* webpackIgnore: true */ "child_process");
   const node_modules: { [mode: string]: any } = {
     fs,
     crypto,

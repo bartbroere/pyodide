@@ -3,7 +3,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "commonjs",
-    "target": "ES2021"
+    "target": "es6"
   },
   "exclude": [""]
 }

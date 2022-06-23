@@ -21,6 +21,19 @@ def _strip_assertions_stderr(messages: Sequence[str]) -> list[str]:
     return res
 
 
+def _strip_assertions_stderr(messages: Sequence[str]) -> list[str]:
+    """Strip additional messages on stderr included when ASSERTIONS=1"""
+    res = []
+    for msg in messages:
+        if msg.strip() in [
+            "sigaction: signal type not supported: this is a no-op.",
+            "Calling stub instead of siginterrupt()",
+        ]:
+            continue
+        res.append(msg)
+    return res
+
+
 def test_find_imports():
 
     res = find_imports(

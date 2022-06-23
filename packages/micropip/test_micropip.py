@@ -162,11 +162,12 @@ def test_parse_wheel_url():
 def test_install_custom_url(selenium_standalone_micropip, base_url):
     selenium = selenium_standalone_micropip
 
-    with spawn_web_server(Path(__file__).parent / "test") as server:
-        server_hostname, server_port, _ = server
-        base_url = f"http://{server_hostname}:{server_port}/"
-        url = base_url + "snowballstemmer-2.0.0-py2.py3-none-any.whl"
-
+    root = Path(__file__).resolve().parents[2]
+    src = root / "src" / "tests" / "data"
+    target = root / "dist" / "test_data"
+    target.symlink_to(src, True)
+    path = "/test_data/snowballstemmer-2.0.0-py2.py3-none-any.whl"
+    try:
         selenium.run_js(
             f"""
             let url = '{url}';
