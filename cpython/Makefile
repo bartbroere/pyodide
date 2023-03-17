@@ -13,7 +13,7 @@ LIB=libpython$(PYMAJOR).$(PYMINOR).a
 SYSCONFIG_NAME=_sysconfigdata__emscripten_$(PLATFORM_TRIPLET)
 
 ZLIBVERSION=1.2.12
-ZLIBTARBALL=$(ROOT)/downloads/zlib-$(ZLIBVERSION).tar.gz
+ZLIBTARBALL=$(ROOT)/fossils/zlib-$(ZLIBVERSION).tar.gz
 ZLIBBUILD=$(ROOT)/build/zlib-$(ZLIBVERSION)
 ZLIBURL=https://zlib.net/zlib-$(ZLIBVERSION).tar.gz
 
