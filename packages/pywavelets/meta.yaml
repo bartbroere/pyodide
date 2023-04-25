@@ -1,15 +1,21 @@
 package:
   name: pywavelets
-  version: 1.2.0
+  version: 1.4.1
+  top-level:
+    - pywt
 source:
-  sha256: 6cbd69b047bb4e00873097472133425f5f08a4e6bc8b3f0ae709274d4d5e9a8d
-  url: https://files.pythonhosted.org/packages/35/e9/decd467448cde227aad94ff2976046afd3a51ad461ba9a325840687e8836/PyWavelets-1.2.0.tar.gz
+  sha256: 6437af3ddf083118c26d8f97ab43b0724b956c9f958e9ea788659f6a2834ba93
+  url: https://files.pythonhosted.org/packages/6e/d4/008dceeb95fafcf141f39393bdfc10921d0b62a325c2794ac533195a1eb3/PyWavelets-1.4.1.tar.gz
 requirements:
+  host:
+    - numpy
   run:
     - distutils
     - numpy
     - matplotlib
     - scipy
-test:
-  imports:
-    - pywt
+about:
+  home: https://github.com/PyWavelets/pywt
+  PyPI: https://pypi.org/project/pywavelets
+  summary: PyWavelets, wavelet transform module
+  license: MIT

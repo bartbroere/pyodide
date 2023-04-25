@@ -1,19 +1,25 @@
 package:
   name: bokeh
-  version: 2.4.2
+  version: 3.1.0
+  top-level:
+    - bokeh
 requirements:
   run:
     - distutils
     - numpy
     - Jinja2
-    - pillow
+    - pandas
+    - Pillow
     - python-dateutil
     - six
     - typing-extensions
     - pyyaml
+    - xyzservices
 source:
-  sha256: f0a4b53364ed3b7eb936c5cb1a4f4132369e394c7ae0a8ef420459410958033d
-  url: https://files.pythonhosted.org/packages/8d/45/723c63620c66e953046d351c599ea14fae6f4d3a5c3af0c952846197b019/bokeh-2.4.2.tar.gz
-test:
-  imports:
-    - bokeh
+  sha256: 9d38ed3b130e1e043447694934c02deb1ae4adfeda1136b8b8eaed9cb26de11c
+  url: https://files.pythonhosted.org/packages/c6/84/3c0c2cb7b4953c4a7b43078ce9c4e7359e01f1ee95c4b1646c3035ceeb89/bokeh-3.1.0-py3-none-any.whl
+about:
+  home: https://github.com/bokeh/bokeh
+  PyPI: https://pypi.org/project/bokeh
+  summary: Interactive plots and applications in the browser from Python
+  license: BSD-3-Clause
