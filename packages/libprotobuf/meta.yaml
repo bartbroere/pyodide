@@ -11,14 +11,7 @@ build:
   script: |
     emconfigure ./configure \
         CFLAGS="-fPIC" \
-        --disable-xz \
-        --disable-xzdec \
-        --disable-lzmadec \
-        --disable-lzmainfo \
-        --disable-lzma-links \
-        --disable-scripts \
-        --disable-doc \
-        --enable-shared=no \
+        --disable-shared \
         --disable-dependency-tracking \
         --prefix=${WASM_LIBRARY_DIR}
 
