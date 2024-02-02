@@ -1,6 +1,6 @@
 package:
   name: fastparquet
-  version: 2023.7.0
+  version: 2023.10.1
   top-level:
     - fastparquet
 requirements:
@@ -11,8 +11,8 @@ requirements:
     - fsspec
     - packaging
 source:
-  url: https://files.pythonhosted.org/packages/03/7b/e13441d2dce9b21562c8b0647ad2316241eddce4dac3c4eefa05332ddfd8/fastparquet-2023.7.0.tar.gz
-  sha256: 66ee6448fd8750d7028ccea2072f404ab05e4e00d98fd33f02dad1260e819aaf
+  url: https://files.pythonhosted.org/packages/e4/be/66b9b0c1b1ad092940efbca5e12402e5e92c55360dce876a65ed3cbb78ff/fastparquet-2023.10.1.tar.gz
+  sha256: 076fedfba2b56782b4823c1d351424425cfeaa5b8644c542416ca1363fe6d921
 about:
   home: https://github.com/dask/fastparquet/
   PyPI: https://pypi.org/project/fastparquet

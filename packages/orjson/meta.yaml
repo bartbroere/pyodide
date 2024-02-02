@@ -1,11 +1,11 @@
 package:
   name: orjson
-  version: 3.9.2
+  version: 3.9.12
   top-level:
     - orjson
 source:
-  url: https://files.pythonhosted.org/packages/30/a4/96bcb52da0de9ccfcd99a60719b995c9b9c3aaa3a70701f0790ce856c10d/orjson-3.9.2.tar.gz
-  sha256: 24257c8f641979bf25ecd3e27251b5cc194cdd3a6e96004aac8446f5e63d9664
+  url: https://files.pythonhosted.org/packages/3d/27/6a821fc97a2b68705cba3158e5ddb300938500a8c2b19dc084f6d43587d4/orjson-3.9.12.tar.gz
+  sha256: da908d23a3b3243632b523344403b128722a5f45e278a8343c2bb67538dff0e4
 requirements:
   executable:
     - rustup
