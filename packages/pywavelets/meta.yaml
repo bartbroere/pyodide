@@ -10,7 +10,6 @@ requirements:
   host:
     - numpy
   run:
-    - distutils
     - numpy
     - matplotlib
     - scipy
